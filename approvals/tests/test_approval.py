@@ -9,6 +9,7 @@ from django.core.exceptions import PermissionDenied, ValidationError
 from django.test import TestCase
 from django.utils import timezone
 
+from items.models import Item
 from approvals.models import Approval, ApprovalDecision as D, ApprovalKind as K
 from tenders.models import GuardedFieldError, TenderStatus as S, TransitionError
 from tenders.tests.helpers import confirmed_fields
@@ -106,6 +107,7 @@ class R15RegistrationTests(TenderFixtures, TestCase):
         self.assertEqual(self.tender.status, S.DRAFTING)
         self.assertTrue(self.tender.work_allowed)
         self.assertEqual(status_entries(self.tender).last().actor, self.md)
+        Item.objects.create(tender=self.tender, specification="Centrifuge", quantity=1)
         self.tender.start_costing(self.pm)  # work can now begin
         self.assertEqual(self.tender.status, S.COSTING)
 
