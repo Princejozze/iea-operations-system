@@ -3,7 +3,6 @@ __pycache__/
 venv/
 .venv/
 .env
-db.sqlite3
 staticfiles/
 *.log
 .DS_Store

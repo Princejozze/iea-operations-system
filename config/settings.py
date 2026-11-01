@@ -12,6 +12,7 @@ import sys
 from pathlib import Path
 
 import environ
+from django.core.exceptions import ImproperlyConfigured
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -83,12 +84,33 @@ TEMPLATES = [
 WSGI_APPLICATION = "config.wsgi.application"
 
 # --- Database ---
-# Local dev: run `docker compose up -d` (uses the bundled docker-compose.yml)
-# and point DATABASE_URL at it. Production: point DATABASE_URL at the RDS
-# instance once it exists.
-DATABASES = {
-    "default": env.db("DATABASE_URL", default=f"sqlite:///{BASE_DIR / 'db.sqlite3'}")
-}
+# PostgreSQL is REQUIRED (CLAUDE.md section 1). There is deliberately no default
+# and no SQLite fallback: much of this system's enforcement (the audit-trail
+# trigger, CHECK constraints, row locking) lives in the database, so a run on
+# any other engine proves almost nothing. Unset, empty or non-PostgreSQL
+# DATABASE_URL stops startup with an instruction.
+_DATABASE_URL_HELP = (
+    "Set DATABASE_URL to a PostgreSQL connection string, for example "
+    "postgres://iea:PASSWORD@localhost:5432/iea - in the environment or in .env "
+    "(copy .env.example to .env). PostgreSQL is required; there is no default and "
+    "no SQLite fallback (CLAUDE.md section 1)."
+)
+
+
+def _database_config():
+    url = env("DATABASE_URL", default="").strip()
+    if not url:
+        raise ImproperlyConfigured(f"DATABASE_URL is not set. {_DATABASE_URL_HELP}")
+    config = env.db_url_config(url)
+    if config.get("ENGINE") != "django.db.backends.postgresql":
+        raise ImproperlyConfigured(
+            f"DATABASE_URL does not point at PostgreSQL (got engine {config.get('ENGINE')!r}). "
+            f"{_DATABASE_URL_HELP}"
+        )
+    return config
+
+
+DATABASES = {"default": _database_config()}
 
 AUTH_USER_MODEL = "accounts.User"
 # Case-insensitive email sign-in; refuses expired temporary passwords (R21).
