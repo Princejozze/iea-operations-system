@@ -168,14 +168,24 @@ class TenderQuerySet(AuditableQuerySet):
 
 
 class TenderManager(models.Manager.from_queryset(TenderQuerySet)):
-    def create_from_upload(self, *, uploaded_by):
+    def create_from_upload(self, *, uploaded_by, pdf=None):
         """
         §5 steps 2-3: the only way a tender is created. Gives it its reference
         (R20) in the same transaction, status EXTRACTING, and the uploading PM
-        as its project manager. Attaching the PDF arrives with TenderDocument.
+        as its project manager.
+
+        ``pdf`` is the uploaded file (a Django File). When given it is stored as the
+        tender's TENDER_PDF document in the same transaction, and nothing else happens
+        in the request: conversion and extraction run later, from the cron-driven
+        command (§6 "Extraction runs asynchronously"). It must look like a PDF.
         """
         if not (uploaded_by.is_active and uploaded_by.role == Role.PROJECT_MANAGER):
             raise PermissionDenied("Only a Project Manager can register a tender by upload.")
+        if pdf is not None:
+            head = pdf.read(5)
+            pdf.seek(0)
+            if head != b"%PDF-":
+                raise ValidationError("That file is not a PDF.")
         with transaction.atomic(), audit_actor(uploaded_by):
             tender = self.model(created_by=uploaded_by, project_manager=uploaded_by)
             with tender._system_write():
@@ -184,6 +194,11 @@ class TenderManager(models.Manager.from_queryset(TenderQuerySet)):
                 tender=tender, from_pm=None, to_pm=uploaded_by, assigned_by=uploaded_by,
                 reason="Registered by upload.",
             )
+            if pdf is not None:
+                TenderDocument.objects.create(
+                    tender=tender, kind=TenderDocumentKind.TENDER_PDF, file=pdf,
+                    original_filename=getattr(pdf, "name", "") or "", uploaded_by=uploaded_by,
+                )
         return tender
 
 
@@ -814,6 +829,10 @@ class TenderDocument(Auditable):
     markdown = models.TextField(blank=True, help_text="PDF→Markdown with page markers (§6). TENDER_PDF rows.")
     uploaded_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="+")
 
+    # The converted Markdown is ~230,000 characters for a 173-page tender: record THAT it changed
+    # in the audit trail (R7), not a copy of it.
+    audit_redact = ("markdown",)
+
     class Meta:
         ordering = ["created_at", "id"]
         constraints = [
@@ -824,3 +843,41 @@ class TenderDocument(Auditable):
 
     def __str__(self):
         return f"{self.tender.reference}: {self.get_kind_display()} ({self.original_filename or self.file.name})"
+
+
+# ---------------------------------------------------------------------------
+# TenderExtraction — §6/§7: what the pipeline worked out about a tender's PDF
+# ---------------------------------------------------------------------------
+
+
+class ExtractionOutcome(models.TextChoices):
+    PROCESSING = "PROCESSING", "Processing"  # claimed by a worker; converting
+    PREPARED = "PREPARED", "Prepared"  # converted and sectioned; sections are ready to send
+    MANUAL_ENTRY = "MANUAL_ENTRY", "Manual entry"  # nothing readable: the PM types the tender (R12)
+
+
+class TenderExtraction(Auditable):
+    """
+    One row per tender. Today it records the pipeline up to the point a section is
+    ready to send (``plan``) or why the tender went to manual entry (``message``).
+    The model's raw output, per-field confidence and the PM's verification state arrive
+    with the extractor (§6): extracted values land HERE, never directly on Tender (R12).
+    """
+
+    tender = models.OneToOneField(Tender, on_delete=models.PROTECT, related_name="extraction")
+    outcome = models.CharField(max_length=16, choices=ExtractionOutcome.choices, default=ExtractionOutcome.PROCESSING)
+    message = models.TextField(blank=True, help_text="Shown to the PM, e.g. why the tender needs manual entry.")
+    converter = models.CharField(max_length=100, blank=True)
+    plan = models.JSONField(default=dict, blank=True, help_text="Sections located, fallbacks, raw-text pages. See tenders.pipeline.sections.")
+
+    audit_redact = ("plan",)  # derived and bulky; the Markdown and the PDF are the record
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                condition=Q(outcome__in=ExtractionOutcome.values), name="tenders_extraction_outcome_valid"
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.tender.reference}: extraction {self.outcome}"
