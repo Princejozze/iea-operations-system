@@ -1,0 +1,30 @@
+{% autoescape off %}{{ letterhead.company_name }}
+{% if letterhead.address %}{{ letterhead.address }}
+{% endif %}{% if letterhead.phone %}Tel: {{ letterhead.phone }}
+{% endif %}{{ letterhead.email }}
+
+{% if doc.date %}{{ doc.date }}
+
+{% endif %}{{ doc.supplier_name }}{% if doc.supplier_contact %}
+Attention: {{ doc.supplier_contact }}{% endif %}
+
+REQUEST FOR QUOTATION - {{ doc.tender_reference }}
+
+Please quote for the items below. State for each the unit price, currency,
+delivery terms (Incoterm), country of origin, make and model, and attach the
+manufacturer's brochure and datasheet.{% if doc.reply_by %}
+We need your quotation by {{ doc.reply_by }}.{% endif %}
+{% if doc.message %}
+{{ doc.message }}
+{% endif %}
+{% for item in doc.items %}{{ forloop.counter }}. [{{ item.reference }}] {{ item.specification }}
+   Quantity: {{ item.quantity }}{% if item.unit_of_measure %} {{ item.unit_of_measure }}{% endif %}{% if item.make_brand %}
+   Preferred make: {{ item.make_brand }}{% endif %}
+{% endfor %}
+Please reply with {{ doc.tender_reference }} in the subject, keeping {{ letterhead.email }} in copy.
+
+Yours faithfully,
+{{ doc.sender_name }}{% if doc.sender_title %}
+{{ doc.sender_title }}{% endif %}
+{{ letterhead.company_name }}
+{% endautoescape %}

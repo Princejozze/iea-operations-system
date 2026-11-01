@@ -1,0 +1,40 @@
+{% extends "documents/letterhead.html" %}
+{% block body %}
+  {% if doc.date %}<p>{{ doc.date }}</p>{% endif %}
+  <p>
+    {{ doc.supplier_name }}{% if doc.supplier_contact %}<br>Attention: {{ doc.supplier_contact }}{% endif %}
+  </p>
+
+  <h2>Request for Quotation &mdash; {{ doc.tender_reference }}</h2>
+
+  <p>
+    Please quote for the items below. State for each the unit price, currency,
+    delivery terms (Incoterm), country of origin, make and model, and attach the
+    manufacturer's brochure and datasheet.
+    {% if doc.reply_by %}We need your quotation by <strong>{{ doc.reply_by }}</strong>.{% endif %}
+  </p>
+  {% if doc.message %}<p>{{ doc.message|linebreaksbr }}</p>{% endif %}
+
+  <table class="items">
+    <thead>
+      <tr><th>Ref</th><th>Specification</th><th class="num">Qty</th><th>Unit</th></tr>
+    </thead>
+    <tbody>
+      {% for item in doc.items %}
+      <tr>
+        <td>{{ item.reference }}</td>
+        <td>{{ item.specification|linebreaksbr }}{% if item.make_brand %}<br><em>Preferred make: {{ item.make_brand }}</em>{% endif %}</td>
+        <td class="num">{{ item.quantity }}</td>
+        <td>{{ item.unit_of_measure }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <p>Please reply to this email with your reference <strong>{{ doc.tender_reference }}</strong> in the subject, keeping {{ letterhead.email }} in copy.</p>
+
+  <div class="signoff">
+    <p>Yours faithfully,</p>
+    <p><strong>{{ doc.sender_name }}</strong>{% if doc.sender_title %}<br>{{ doc.sender_title }}{% endif %}<br>{{ letterhead.company_name }}</p>
+  </div>
+{% endblock %}
