@@ -1,5 +1,6 @@
 import datetime
 
+from django.apps import apps
 from django.utils import timezone
 
 from accounts.models import Role, User
@@ -40,6 +41,14 @@ def force_status(tender, status, **fields):
         tender.save()
     tender.refresh_from_db()
     return tender
+
+
+def add_item(tender, **fields):
+    """An item for ``tender``, so start_costing's item check (§5) can pass. Resolved
+    with apps.get_model because tenders may not import items (§1: no downward imports)."""
+    fields.setdefault("specification", "Laboratory centrifuge, 12 x 15 ml")
+    fields.setdefault("quantity", 2)
+    return apps.get_model("items", "Item").objects.create(tender=tender, **fields)
 
 
 def status_entries(tender):

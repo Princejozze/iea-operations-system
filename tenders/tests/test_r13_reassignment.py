@@ -12,7 +12,7 @@ from accounts.models import Role
 from core.models import AuditAction, AuditEntry
 from tenders.models import GuardedFieldError, Tender, TenderAssignment, TenderStatus as S
 
-from .helpers import TenderFixtures, make_user
+from .helpers import TenderFixtures, add_item, make_user
 
 
 class ReassignmentTests(TenderFixtures, TestCase):
@@ -80,6 +80,7 @@ class ReassignmentTests(TenderFixtures, TestCase):
         self.assertNotIn("status", form_class.base_fields)
 
     def test_after_reassignment_only_the_new_pm_can_act(self):
+        add_item(self.tender)  # so only the PM check, not the item check, decides
         self.tender.reassign(self.md, self.pm2)
         with self.assertRaises(PermissionDenied):
             self.tender.start_costing(self.pm)

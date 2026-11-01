@@ -11,7 +11,7 @@ from django.test import TestCase
 
 from tenders.models import TenderStatus as S, TransitionError
 
-from .helpers import TenderFixtures, confirmed_fields, status_entries
+from .helpers import TenderFixtures, add_item, confirmed_fields, status_entries
 
 UNREGISTERED = (S.EXTRACTING, S.PENDING_VERIFICATION, S.PENDING_REGISTRATION_APPROVAL)
 
@@ -64,6 +64,7 @@ class RegistrationGateTests(TenderFixtures, TestCase):
 
     def test_registered_tender_can_start_costing(self):
         tender = self.new_tender(S.DRAFTING)
+        add_item(tender)
         tender.start_costing(self.pm)
         self.assertEqual(tender.status, S.COSTING)
         self.assertEqual(status_entries(tender).last().actor, self.pm)

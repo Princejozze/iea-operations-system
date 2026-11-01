@@ -478,10 +478,21 @@ class Tender(Auditable):
             )
 
     def start_costing(self, user):
-        """PM starts costing (§5.12). Only reachable after registration (R15)."""
+        """PM starts costing (§5.12). Only reachable after registration (R15).
+
+        Requires at least one Item and nothing more (§5): not that the
+        specification split succeeded, never that an AI step worked (R12). Fails
+        closed if the items app is not installed.
+        """
         with self._transition(
             user, event="start_costing", allowed_from=(S.DRAFTING,), must_be_pm=True
         ) as t:
+            items = t._related("items")
+            if items is None or not items.exists():
+                raise TransitionError(
+                    "Add at least one item before costing starts (§5): an item sheet cannot be costed empty.",
+                    code="no_items",
+                )
             t.status = S.COSTING
 
     def submit_for_audit(self, user):
