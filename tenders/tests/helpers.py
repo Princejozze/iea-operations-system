@@ -1,0 +1,68 @@
+import datetime
+
+from django.utils import timezone
+
+from accounts.models import Role, User
+from core.models import AuditAction, AuditEntry, Client
+from tenders.models import BidSecurityType, Tender
+
+
+def make_user(role, name, **extra):
+    extra.setdefault("must_change_password", False)
+    return User.objects.create_user(
+        email=f"{name}@imperialeastafrica.tz", password="x", role=role,
+        first_name=name.title(), last_name="Test", **extra,
+    )
+
+
+def confirmed_fields(client=None):
+    deadline = timezone.now() + datetime.timedelta(days=21)
+    return dict(
+        title="Supply of laboratory centrifuges",
+        client=client or Client.objects.get_or_create(name="Muhimbili National Hospital", short_name="MNH")[0],
+        official_reference="MNH/2026/G/017",
+        submission_deadline=deadline,
+        clarification_deadline=deadline - datetime.timedelta(days=7),
+        bid_security_type=BidSecurityType.BANK_GUARANTEE,
+        site_visit_required=False,
+    )
+
+
+def force_status(tender, status, **fields):
+    """TEST-ONLY shortcut to a state whose real gate lives in an app that does
+    not exist yet (approvals, items, audits). Production code never does this:
+    status is written only by Tender's transition methods (R19)."""
+    tender.refresh_from_db()
+    tender.status = status
+    for name, value in fields.items():
+        setattr(tender, name, value)
+    with tender._system_write():
+        tender.save()
+    tender.refresh_from_db()
+    return tender
+
+
+def status_entries(tender):
+    return AuditEntry.objects.filter(
+        model="tenders.Tender", object_id=str(tender.pk), action=AuditAction.STATUS_CHANGE
+    ).order_by("id")
+
+
+class TenderFixtures:
+    """Mixin: the cast of users every tender test needs."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.md = make_user(Role.EXECUTIVE, "faraja")
+        cls.hops = make_user(Role.HEAD_OF_OPERATIONS, "mariam")
+        cls.pm = make_user(Role.PROJECT_MANAGER, "gift")
+        cls.pm2 = make_user(Role.PROJECT_MANAGER, "alice")
+        cls.auditor = make_user(Role.AUDITOR, "sylvia")
+        cls.finance = make_user(Role.FINANCE, "anna")
+        cls.admin_user = make_user(Role.ADMIN, "janeth", is_staff=True, is_superuser=True)
+
+    def new_tender(self, status=None, **fields):
+        tender = Tender.objects.create_from_upload(uploaded_by=self.pm)
+        if status is not None:
+            force_status(tender, status, **fields)
+        return tender

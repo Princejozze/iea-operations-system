@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — IEA Operations{% endblock %}
+{% block content %}
+<h1 class="h3 mb-4">Welcome, {{ user.get_full_name|default:user.username }}</h1>
+<p class="text-muted">Role: {{ user.get_role_display }}</p>
+
+<div class="row g-3">
+  <div class="col-12 col-md-4">
+    <div class="card h-100">
+      <div class="card-body">
+        <h5 class="card-title">Tenders</h5>
+        <p class="card-text text-muted">Module 1–2 (Tender Mgmt + BOM) — in progress.</p>
+      </div>
+    </div>
+  </div>
+  <div class="col-12 col-md-4">
+    <div class="card h-100">
+      <div class="card-body">
+        <h5 class="card-title">Pre-Bid QC Audit</h5>
+        <p class="card-text text-muted">Module 3 — not started yet.</p>
+      </div>
+    </div>
+  </div>
+  <div class="col-12 col-md-4">
+    <div class="card h-100">
+      <div class="card-body">
+        <h5 class="card-title">Admin</h5>
+        <p class="card-text text-muted"><a href="/admin/">Open Django Admin →</a></p>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Log in — IEA Operations{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-12 col-sm-8 col-md-5 col-lg-4">
+    <h1 class="h4 mb-3 text-center">IEA Operations</h1>
+    <div class="card shadow-sm">
+      <div class="card-body">
+        {% if form.errors %}
+          <div class="alert alert-danger">Incorrect email or password.</div>
+        {% endif %}
+        <form method="post">
+          {% csrf_token %}
+          <div class="mb-3">
+            <label for="id_username" class="form-label">Email</label>
+            <input type="email" name="username" autocomplete="email" autofocus class="form-control" id="id_username" required>
+          </div>
+          <div class="mb-3">
+            <label for="id_password" class="form-label">Password</label>
+            <input type="password" name="password" class="form-control" id="id_password" required>
+          </div>
+          <input type="hidden" name="next" value="{{ next }}">
+          <button type="submit" class="btn btn-primary w-100">Log in</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

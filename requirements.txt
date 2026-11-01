@@ -1,0 +1,18 @@
+Django==6.1.2
+psycopg2-binary==2.9.10
+django-environ==0.12.0
+django-storages[s3]==1.14.4
+boto3==1.35.68
+whitenoise==6.8.2
+gunicorn==23.0.0
+requests==2.32.3
+
+# PDF -> Markdown (CLAUDE.md §4/§6). AGPL via PyMuPDF; substitute docling (MIT) if that matters.
+# Pinned to the 1.x line on purpose: pymupdf4llm 2.0 is an EMPTY shim whose code now lives in
+# pymupdf 2.x, so "pymupdf4llm==2.0" installs fine and then fails on import. pymupdf is pinned
+# explicitly so pip cannot resolve it to 2.x underneath pymupdf4llm 1.x.
+pymupdf4llm==1.28.2
+pymupdf==1.28.2
+
+# Gemini extraction (CLAUDE.md §4). Unified Google Gen AI SDK, NOT the superseded google-generativeai.
+google-genai==2.34.0
