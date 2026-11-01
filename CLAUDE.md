@@ -34,6 +34,17 @@ Run locally:
 python manage.py migrate && python manage.py runserver
 ```
 
+### Committing during parallel work
+
+Several sessions work in this tree at once, in different app directories.
+
+- **Commit only your own paths.** `git add approvals/ tenders/` — never
+  `git add -A` or `git add .`, which sweeps up another session's half-finished
+  work and makes both streams unreviewable.
+- Commit before handing back, so each stream's work is one reviewable diff.
+- If a path you need is already modified and is not yours, stop and say so
+  rather than committing it or reverting it.
+
 ### Application structure
 
 Twelve apps, in dependency order. **An app may only import from apps above it.**
@@ -314,6 +325,19 @@ connect as an ordinary role with no superuser rights and no `TRUNCATE` privilege
 on the audit table.** The `iea` user in `docker-compose.yml` is a superuser and is
 development-only.
 
+**`REVOKE TRUNCATE` is not sufficient on its own.** A role that *owns*
+`core_auditentry` can re-grant itself the privilege or drop the trigger, so a
+single role that both migrates and serves the app defeats R7 in principle.
+
+**Required before production deploy — two roles:**
+- `iea_owner` owns the schema and runs migrations. Used by `manage.py migrate`
+  only, never by the running application.
+- `iea_app` is what Django connects as at runtime. On `core_auditentry` it holds
+  `SELECT` and `INSERT` only — no `UPDATE`, `DELETE`, `TRUNCATE`, and no ownership.
+
+A single role with `REVOKE TRUNCATE` is acceptable in development. It is a known
+gap, not a solution, and it must be closed before real tender data is loaded.
+
 ### Enforcement
 "Enforce in the model layer" means: validation in `clean()`, the same check
 repeated in `save()`, and a database constraint where the rule can be expressed as
@@ -331,9 +355,15 @@ transition methods in R19.
    `EXTRACTING`.
 4. **System converts the PDF to Markdown** before any AI call (§6).
 5. **System sends the Markdown to Gemini** and extracts: tender number, title,
-   client name and address, submission and clarification deadlines, bid security
-   requirement and type, site visit requirement, special requirements, required
-   forms, and the technical specification section.
+   client name and address, submission deadline, bid security requirement and
+   type, special requirements, required forms, and the technical specification
+   section.
+
+   **The submission deadline is reliably present** (Tender Data Sheet item 36, or
+   the Invitation clause on a mini-competition). **The clarification deadline and
+   site visit requirement usually are not** — in all three test tenders they
+   appeared only in generic boilerplate, never as a stated value. Return null and
+   let the PM fill them. Never infer a date from boilerplate (R12).
 6. **Status becomes `PENDING_VERIFICATION`** whether extraction succeeded, partly
    succeeded, or failed. A failed extraction leaves the fields empty for the PM to
    type; it never traps the tender (R12).
@@ -367,6 +397,25 @@ transition methods in R19.
     where the claim came from.
 12. **PM starts costing**, which moves the tender to `COSTING`. RFQs go out from
     here, always cc `sales@` (R8).
+13. **Quotes come back, and the PM enters them.** Two things happen together and
+    neither substitutes for the other:
+    - **Attach the supplier's original** — the quotation exactly as they sent it.
+      This is the evidence, and it is one of the three mandatory item attachments.
+    - **Enter the figures** that drive the costing chain: unit price, currency,
+      Incoterm, whether shipping applies, country of origin, make and model as
+      actually offered, lead time, validity, and the **specification offered**.
+
+    The typed figures are the working data; the attachment is the proof. Keep both
+    — a price with no document behind it cannot be defended at audit, and a
+    document nobody transcribed cannot be costed.
+
+    **The specification offered flows into the QC audit.** `QCAuditLine.
+    specification_offered` is populated from the selected quote, so the auditor
+    reviews what the supplier actually committed to rather than retyping it.
+
+    **Selecting a quote** copies its figures onto the `Item` as costing inputs and
+    sets `Item.selected_quote`. An item may hold several quotes; exactly one is
+    selected.
 
 `start_costing` requires only that the tender is in `DRAFTING` and has at least
 one `Item`. It does **not** require the specification split to have succeeded —
@@ -402,9 +451,30 @@ Real tenders are 70–175 pages of Tanzanian government boilerplate with a
 | Specs | `Specifications` | `Technical Specifications` |
 | Forms | `TENDERING FORMS` | `TENDERING FORMS` |
 
-**Parse the table of contents first, then extract section by section.** Do not
-send the whole document to the model. The TOC gives both the section names and
-their page ranges, so the extractor should:
+**Parse the table of contents first, then extract section by section.**
+
+Validated against three real tenders (TANAPA mini-competition, GASCO general
+goods, Geological Survey of Tanzania). Every section was located in all three.
+
+**The reason is accuracy, not cost.** Whole documents are only 26k–58k tokens, so
+a full pass would fit in context comfortably. Sectioning wins because it gives the
+model focused context and because page provenance falls out of it for free. Token
+saving (6–10×) is a bonus, not the justification.
+
+**Locate by TOC page range, then confirm by content signature — not by heading
+name.** TOC names do not match body headings: the TOC says "Schedule of Goods",
+the body says "List of Goods"; TANAPA's Specifications section has no heading at
+all and was confirmed only because a Technical Requirements table sits in that
+page range. Only about half of TOC headings can be confirmed by name on their
+stated page. **Page numbers, however, were correct every time.** Keep an alias
+list, but treat it as a hint — a list tuned on three documents will miss on a
+fourth.
+
+**The whole-document fallback is first-class, not an edge case.** When a section
+cannot be located confidently, send the whole document with the TOC as a hint. It
+fits. Never fail an upload because a heading was unfamiliar.
+
+The extractor should:
 
 1. Convert to Markdown and locate the TOC.
 2. Pull metadata from the Tender Data Sheet or Invitation section.
@@ -429,9 +499,35 @@ Two details from real documents:
   (`• Engine Output: 23 kW • Working Width: 2,540 mm`). Extract these into
   structured attributes — that is what makes the numeric variance flagging in R9
   possible later.
-- The specification section is a **two-column `Technical Requirements |
-  Description` table**. That is literally the compliance sheet, and it maps
-  straight onto `QCAuditLine.specification_required` and `specification_offered`.
+- The specification section is **sometimes** a two-column `Technical Requirements
+  | Description` table that maps onto `QCAuditLine.specification_required` and
+  `specification_offered` — but only **one of three** real tenders was like that.
+  In the second the right column held only a quantity; in the third the left
+  column was the same text re-wrapped, so pairing rows was meaningless. Treat a
+  clean two-column pairing as a lucky case to exploit when detected, never as the
+  shape to assume.
+- **Some tables shred on conversion.** In both general-goods tenders, Tender Data
+  Sheet page 73 came out as seven misaligned columns — and that page carries the
+  Manufacturer's Authorization requirement, which matters to IEA. When a table's
+  columns look incoherent, pass that page's **raw text** to the model instead of
+  the parsed table.
+- **A scanned tender produces nothing.** All three test documents had a real text
+  layer and converted at a 1.00 match. Detect an empty or near-empty text layer on
+  upload and send the tender straight to manual entry with a clear message. Never
+  let a scan silently extract to blank fields.
+
+### Extraction runs asynchronously
+Conversion alone takes about **0.4 seconds per page** — 66 seconds for a
+173-page tender, before Gemini is even called. **Never do this in the request.**
+
+The upload returns immediately with the tender in `EXTRACTING`. A management
+command invoked by cron **every minute** picks up tenders in that status,
+converts, extracts, and moves them to `PENDING_VERIFICATION`. The page polls.
+Expect roughly one to two minutes end to end, and say so in the interface so the
+PM is not left wondering.
+
+This keeps the no-broker decision in §4. If upload volume ever makes a
+once-a-minute poll feel slow, add `django-q2` — not Celery.
 
 ### Extraction
 - Provider: **Gemini API**, behind a `DocumentExtractor` interface.
@@ -528,6 +624,27 @@ A `Lot`, if set, must belong to the same `Tender` as the item.
 `name`, `is_oem`, `contact_person`, `email`, `phone`, `country`, `website`,
 `notes`. Legacy data holds 426 name strings for roughly 62 real companies —
 deduplicate on import.
+
+### Quote  (`items`)
+What a supplier actually offered, per §5 step 13.
+`item`, `supplier`, `original_document` (their quotation as sent — mandatory),
+`quoted_unit_price`, `currency`, `incoterm`, `shipping_applies`,
+`country_of_origin`, `make_brand`, `model_part_number`,
+`specification_offered`, `lead_time_days`, `valid_until`, `notes`,
+`received_at`, `entered_by`, `status` (`RECEIVED` | `SELECTED` | `REJECTED`).
+
+An item may hold several quotes; exactly one may be `SELECTED`, and selecting it
+copies its figures onto the `Item` as costing inputs. `Item.selected_quote` points
+back. Changing the selection re-costs the item and writes an `AuditEntry` — a bid
+price that changed must always be explainable.
+
+**Entry at scale.** A grid with inline editing is right for a handful of items.
+Tenders in the legacy data run to **101 items**, where row-by-row entry is
+punishing. Offer an **xlsx round-trip**: download a sheet pre-filled with the
+tender's items, fill the price columns, upload it back. The spreadsheet is a
+transport format only — never a system of record, never the place a figure lives.
+Validate every uploaded row and report what failed rather than importing
+silently.
 
 ### SupplierSuggestion  (`items`)
 AI-proposed manufacturers for a specification, per §5 step 11.
