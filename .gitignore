@@ -6,3 +6,7 @@ venv/
 staticfiles/
 *.log
 .DS_Store
+
+# Scratch prototypes and real tender PDFs (large third-party documents): never committed.
+scratch/
+tenders/tests/fixtures/pdfs/
