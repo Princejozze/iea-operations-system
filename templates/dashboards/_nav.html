@@ -1,0 +1,39 @@
+<nav class="navbar navbar-expand-xl navbar-dark navbar-iea" aria-label="Main">
+  <div class="container-fluid">
+    <a class="navbar-brand" href="{% url 'dashboard' %}">IEA Operations</a>
+    {% if show_menu %}
+    <button class="navbar-toggler position-relative" type="button" data-bs-toggle="collapse" data-bs-target="#mainnav"
+            aria-controls="mainnav" aria-expanded="false"
+            aria-label="Menu{% if total %}, {{ total }} waiting{% endif %}">
+      <span class="navbar-toggler-icon"></span>
+      {% if total %}<span class="badge rounded-pill nav-count toggler-count {% if total_needs_md %}needs-md-badge{% endif %}">{{ total }}</span>{% endif %}
+    </button>
+    <div class="collapse navbar-collapse" id="mainnav">
+      <ul class="navbar-nav me-auto">
+        {% for link in links %}
+        <li class="nav-item">
+          <a class="nav-link{% if link.active %} active{% endif %}" href="{{ link.url }}"{% if link.active %} aria-current="page"{% endif %}>
+            {{ link.label }}{% if link.count %}
+            <span class="badge rounded-pill nav-count {% if link.needs_md %}needs-md-badge{% endif %}"
+                  aria-label="{{ link.count }} waiting">{{ link.count }}</span>{% endif %}
+          </a>
+        </li>
+        {% endfor %}
+      </ul>
+      <div class="d-flex flex-wrap align-items-center gap-2 py-2 py-xl-0">
+        <span class="navbar-text small" title="{{ user.get_role_display }}">{{ user.get_full_name|default:user.email }}<span class="d-xl-none d-xxl-inline"> · {{ user.get_role_display }}</span></span>
+        <a class="btn btn-sm btn-outline-light" href="{% url 'password_change' %}">Password</a>
+        <form method="post" action="{% url 'logout' %}">
+          <input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf_token }}">
+          <button class="btn btn-sm btn-outline-light" type="submit">Log out</button>
+        </form>
+      </div>
+    </div>
+    {% elif user.is_authenticated %}
+    <form method="post" action="{% url 'logout' %}" class="ms-auto">
+      <input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf_token }}">
+      <button class="btn btn-sm btn-outline-light" type="submit">Log out</button>
+    </form>
+    {% endif %}
+  </div>
+</nav>

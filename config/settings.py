@@ -52,6 +52,11 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",
+    # Compress HTML for slow (3G) links: the item sheet is ~500 KB uncompressed. Below
+    # WhiteNoise, which answers static requests itself (serving its own compressed files),
+    # so only the app's pages pass through here. BREACH: Django (4.2+) adds random bytes
+    # to the gzip header ("Heal the Breach"), and masks the CSRF token per request.
+    "django.middleware.gzip.GZipMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",

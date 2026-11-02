@@ -42,7 +42,7 @@
   {% if user.role == "AUDIT" or user.role == "EXEC" or user.role == "HOPS" %}
   <div class="col-12 col-md-4">
     <a class="card h-100 text-decoration-none" href="{% url 'audits:queue' %}">
-      <div class="card-body"><h2 class="h6 card-title">QC audits</h2>
+      <div class="card-body"><h2 class="h6 card-title">QC audits{% if counts.audits %} <span class="badge rounded-pill nav-count">{{ counts.audits }}</span>{% endif %}</h2>
         <p class="card-text text-muted small mb-0">Item sheets waiting for compliance review.</p></div>
     </a>
   </div>
@@ -50,14 +50,22 @@
   {% if user.role == "PM" or user.role == "EXEC" or user.role == "FIN" or user.role == "HOPS" %}
   <div class="col-12 col-md-4">
     <a class="card h-100 text-decoration-none" href="{% url 'approvals:fund_list' %}">
-      <div class="card-body"><h2 class="h6 card-title">Fund requests</h2>
+      <div class="card-body"><h2 class="h6 card-title">Fund requests{% if counts.to_pay %} <span class="badge rounded-pill nav-count">{{ counts.to_pay }} to pay</span>{% endif %}</h2>
         <p class="card-text text-muted small mb-0">NeST fees and other money a tender needs.</p></div>
     </a>
   </div>
   {% endif %}
+  {% if user.role == "CLEAR" %}
+  <div class="col-12 col-md-8">
+    <div class="card h-100"><div class="card-body">
+      <h2 class="h6 card-title">Post-award records</h2>
+      <p class="card-text text-muted small mb-0">Shipments, payments and clearing for won contracts arrive here in Phase 2.</p>
+    </div></div>
+  </div>
+  {% endif %}
   {% if user.role == "ADMIN" %}
   <div class="col-12 col-md-4">
-    <a class="card h-100 text-decoration-none" href="/admin/">
+    <a class="card h-100 text-decoration-none" href="{% url 'admin:index' %}">
       <div class="card-body">
         <h2 class="h6 card-title">System administration</h2>
         <p class="card-text text-muted small mb-0">Users and configuration.</p>

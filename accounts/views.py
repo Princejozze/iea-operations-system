@@ -1,15 +1,8 @@
 from django.contrib import messages
 from django.contrib.auth import views as auth_views
-from django.contrib.auth.decorators import login_required
-from django.shortcuts import render
 from django.urls import reverse_lazy
 
 from .forms import IEAPasswordChangeForm
-
-
-@login_required
-def dashboard(request):
-    return render(request, "dashboard.html")
 
 
 class PasswordChangeView(auth_views.PasswordChangeView):

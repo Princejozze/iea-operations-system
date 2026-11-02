@@ -1,0 +1,21 @@
+{% comment %}
+Breadcrumbs back to the tender, with its reference copyable in one click (R18).
+  tender     the tender (required)
+  via_sheet  add an "Item sheet" step (quote and quote-sheet pages)
+  item       with via_sheet: return to this item's card on the sheet
+  via_funds  add a "Fund requests" step
+  here       the current page's name; omit on the tender page itself
+{% endcomment %}
+<nav aria-label="Breadcrumb" class="crumbs mb-1">
+  <ol class="breadcrumb mb-0">
+    <li class="breadcrumb-item"><a href="{% url 'tenders:list' %}">Tenders</a></li>
+    <li class="breadcrumb-item"{% if not here %} aria-current="page"{% endif %}>
+      {% if here %}<a class="ref" href="{% url 'tenders:detail' tender.pk %}">{{ tender.reference }}</a>{% else %}<span class="ref">{{ tender.reference }}</span>{% endif %}
+      <button type="button" class="btn btn-sm btn-outline-ink py-0 px-2 ms-1 align-baseline copy-btn" data-copy="{{ tender.reference }}"
+              aria-label="Copy reference {{ tender.reference }}">Copy</button>
+    </li>
+    {% if via_sheet %}<li class="breadcrumb-item"><a href="{% url 'items:sheet' tender.pk %}{% if item %}#item-{{ item.pk }}{% endif %}">Item sheet</a></li>{% endif %}
+    {% if via_funds %}<li class="breadcrumb-item"><a href="{% url 'approvals:fund_list' %}">Fund requests</a></li>{% endif %}
+    {% if here %}<li class="breadcrumb-item active" aria-current="page">{{ here }}</li>{% endif %}
+  </ol>
+</nav>

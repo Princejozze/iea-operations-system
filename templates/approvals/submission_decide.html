@@ -3,7 +3,7 @@
 {% block title %}Submission — {{ tender.reference }} — IEA Operations{% endblock %}
 {% block content %}
 <div class="mb-3">
-  <div class="mb-1">{% include "tenders/_reference.html" %}</div>
+  {% include "_crumbs.html" with tender=tender here="Submission approval" %}
   <h1 class="h4 mb-1">{{ tender.title }}</h1>
   <div class="small text-muted">{{ tender.client.name }} · <span class="ref">{{ tender.official_reference }}</span> · PM {{ tender.project_manager.get_full_name|default:tender.project_manager.email }}</div>
 </div>

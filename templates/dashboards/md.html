@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — IEA Operations{% endblock %}
+{% block content %}
+{% comment %}
+The MD's dashboard. Brass marks ONLY what is waiting on the MD, and only while something
+is: an empty queue is not a blocker, so it is drawn in ink. Tenders at risk are the PMs'
+move, never brass.
+{% endcomment %}
+<h1 class="visually-hidden">Dashboard</h1>
+
+{# ---- Hero: the signature queue (R3) ---- #}
+<section class="dash-hero {% if signature_queue %}needs-md-panel{% endif %} mb-4" aria-labelledby="sig-h">
+  <div class="d-flex flex-wrap justify-content-between align-items-baseline gap-2 mb-2">
+    <h2 id="sig-h" class="h5 mb-0 {% if signature_queue %}needs-md{% endif %}">
+      {% if signature_queue %}{{ signature_queue|length }} bid{{ signature_queue|pluralize }} awaiting your signature{% else %}No bids awaiting your signature{% endif %}
+    </h2>
+    {% if signature_queue %}<a class="small" href="{% url 'approvals:submission_queue' %}">Submission queue</a>{% endif %}
+  </div>
+  {% if signature_queue %}
+  <ul class="dash-list">
+    {% for t in signature_queue %}
+    <li>
+      <a class="dash-row" href="{% url 'approvals:submission_decide' t.pk %}">
+        <span class="dash-main">
+          <span class="ref">{{ t.reference }}</span>
+          <span class="dash-client">{% include "_client.html" with client=t.client %}</span>
+          <span class="dash-title">{{ t.title }}</span>
+        </span>
+        <span class="dash-meta">
+          <span class="num fw-semibold">TZS {{ t.summary.total|floatformat:"0g" }}</span>
+          {% include "_days.html" with days=t.days_left %}
+          <span class="btn btn-sm btn-needs-md" aria-hidden="true">Review &amp; sign</span>
+        </span>
+      </a>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="text-muted mb-0">Audited bids appear here for your submission approval.</p>
+  {% endif %}
+</section>
+
+{# ---- Then: the other decisions only the MD can make ---- #}
+<div class="row g-3 mb-4">
+  <section class="col-12 col-lg-4" aria-labelledby="reg-h">
+    <div class="dash-card h-100 {% if registrations %}needs-md-panel{% endif %}">
+      <h2 id="reg-h" class="h6 {% if registrations %}needs-md{% endif %}">
+        Registrations <span class="text-muted fw-normal">· {{ registrations|length }}</span>
+      </h2>
+      {% if registrations %}
+      <ul class="dash-list compact">
+        {% for t in registrations %}
+        <li><a class="dash-row" href="{% url 'approvals:registration_decide' t.pk %}">
+          <span class="dash-main"><span class="ref">{{ t.reference }}</span>
+            <span class="dash-title">{{ t.title|default:"(untitled)" }}</span>
+            <span class="dash-client">{% include "_client.html" with client=t.client %} · {{ t.project_manager.get_full_name }}</span></span>
+          <span class="dash-meta">{% include "_days.html" with days=t.days_left %}</span>
+        </a></li>
+        {% endfor %}
+      </ul>
+      {% else %}<p class="small text-muted mb-0">No tenders waiting to be registered.</p>{% endif %}
+    </div>
+  </section>
+
+  <section class="col-12 col-lg-4" aria-labelledby="elig-h">
+    <div class="dash-card h-100 {% if eligibility %}needs-md-panel{% endif %}">
+      <h2 id="elig-h" class="h6 {% if eligibility %}needs-md{% endif %}">
+        Eligibility decisions <span class="text-muted fw-normal">· {{ eligibility|length }}</span>
+      </h2>
+      {% if eligibility %}
+      <ul class="dash-list compact">
+        {% for r in eligibility %}
+        <li><a class="dash-row" href="{% url 'tenders:detail' r.tender_id %}">
+          <span class="dash-main"><span class="ref">{{ r.tender.reference }}</span>
+            <span class="dash-title">{{ r.requirement|truncatechars:90 }}</span>
+            <span class="dash-client">Raised by {{ r.raised_by.get_full_name }} · tender frozen (R9a)</span></span>
+          <span class="dash-meta">{% include "_days.html" with days=r.days_left %}</span>
+        </a></li>
+        {% endfor %}
+      </ul>
+      {% else %}<p class="small text-muted mb-0">No unmet requirements escalated to you.</p>{% endif %}
+    </div>
+  </section>
+
+  <section class="col-12 col-lg-4" aria-labelledby="fund-h">
+    <div class="dash-card h-100 {% if funds %}needs-md-panel{% endif %}">
+      <h2 id="fund-h" class="h6 {% if funds %}needs-md{% endif %}">
+        Fund requests <span class="text-muted fw-normal">· {{ funds|length }}</span>
+      </h2>
+      {% if funds %}
+      <ul class="dash-list compact">
+        {% for fr in funds %}
+        <li><a class="dash-row" href="{% url 'approvals:fund_detail' fr.pk %}">
+          <span class="dash-main"><span class="ref">{{ fr.tender.reference }}</span>
+            <span class="dash-title">{{ fr.get_purpose_display }}</span>
+            <span class="dash-client">{{ fr.requested_by.get_full_name }}</span></span>
+          <span class="dash-meta"><span class="num">{{ fr.currency }} {{ fr.amount|floatformat:"0g" }}</span>
+            {% include "_days.html" with days=fr.days_left %}</span>
+        </a></li>
+        {% endfor %}
+      </ul>
+      {% else %}<p class="small text-muted mb-0">No fund requests waiting for approval.</p>{% endif %}
+    </div>
+  </section>
+</div>
+
+{# ---- Then: tenders at risk from unpriced items (the PMs' move: never brass) ---- #}
+<section aria-labelledby="risk-h" class="mb-4">
+  <h2 id="risk-h" class="h6 mb-1">At risk: unpriced items, deadline within {{ at_risk_days }} days</h2>
+  <p class="small text-muted mb-2">The PM's move. Shown so you see it before the T-3 escalation emails start.</p>
+  {% if at_risk %}
+  <ul class="dash-list">
+    {% for t in at_risk %}
+    <li><a class="dash-row" href="{% url 'tenders:detail' t.pk %}">
+      <span class="dash-main"><span class="ref">{{ t.reference }}</span>
+        <span class="dash-client">{% include "_client.html" with client=t.client %}</span>
+        <span class="dash-title">{{ t.title|default:"(untitled)" }}</span>
+        <span class="dash-client">{{ t.project_manager.get_full_name }}</span></span>
+      <span class="dash-meta">
+        <span class="flag small">{% if t.items_total %}{{ t.items_unpriced }} of {{ t.items_total }} unpriced{% else %}no items yet{% endif %}</span>
+        {% include "_days.html" with days=t.days_left %}
+      </span>
+    </a></li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="small text-muted mb-0">Nothing at risk: every tender due within {{ at_risk_days }} days is fully priced.</p>
+  {% endif %}
+</section>
+{% endblock %}

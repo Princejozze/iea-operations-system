@@ -2,7 +2,7 @@
 {% block title %}Verify {{ tender.reference }} — IEA Operations{% endblock %}
 {% block content %}
 <div class="mb-3">
-  <div class="mb-1">{% include "tenders/_reference.html" %}</div>
+  {% include "_crumbs.html" with tender=tender here="Verify" %}
   <h1 class="h4 mb-1">Verify the extracted fields</h1>
   <p class="small text-muted mb-0">
     These values were read from the PDF by the system and are a draft (R12). Check each one against its source page,

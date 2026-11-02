@@ -10,7 +10,8 @@ from django.contrib import admin
 from django.contrib.auth import views as auth_views
 from django.urls import include, path
 
-from accounts.views import PasswordChangeView, dashboard
+from accounts.views import PasswordChangeView
+from dashboards.views import dashboard
 
 urlpatterns = [
     path("admin/", admin.site.urls),

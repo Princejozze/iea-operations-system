@@ -2,9 +2,8 @@
 {% block title %}Upload quote sheet — {{ tender.reference }} — IEA Operations{% endblock %}
 {% block content %}
 <div class="mb-3">
-  <div class="mb-1">{% include "tenders/_reference.html" %}</div>
-  <a class="small" href="{% url 'items:sheet' tender.pk %}">&larr; Back to the item sheet</a>
-  <h1 class="h5 mt-2">Upload a filled quote sheet</h1>
+  {% include "_crumbs.html" with tender=tender via_sheet=True here="Upload quote sheet" %}
+  <h1 class="h5">Upload a filled quote sheet</h1>
   <p class="small text-muted">One sheet is one supplier and one original quotation. Every row is checked; if any row fails, nothing is imported and you upload the corrected sheet again.</p>
 </div>
 

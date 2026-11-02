@@ -2,7 +2,7 @@
 {% block title %}{{ tender.reference }} — IEA Operations{% endblock %}
 {% block content %}
 <div class="mb-3">
-  <div class="mb-1">{% include "tenders/_reference.html" %}</div>
+  {% include "_crumbs.html" with tender=tender %}
   <h1 class="h4 mb-1">{{ tender.title|default:"(awaiting verification)" }}</h1>
   <div class="small text-muted">
     {% if tender.client %}{{ tender.client.name }}{% endif %}

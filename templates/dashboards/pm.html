@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — IEA Operations{% endblock %}
+{% block content %}
+<h1 class="visually-hidden">Dashboard</h1>
+
+{# ---- Hero: the nearest deadline, and what is blocking it ---- #}
+<section class="dash-hero mb-4 {% if hero.gate.needs_md %}needs-md-panel{% endif %}" aria-labelledby="hero-h">
+  {% if hero %}
+  <p class="small text-muted mb-1">Nearest deadline</p>
+  <div class="d-flex flex-wrap justify-content-between align-items-baseline gap-2">
+    <h2 id="hero-h" class="h5 mb-0">
+      <a href="{% url 'tenders:detail' hero.pk %}">{{ hero.title|default:"(untitled)" }}</a>
+    </h2>
+    <span class="h5 mb-0">{% include "_days.html" with days=hero.days_left %}</span>
+  </div>
+  <p class="small mb-2"><span class="ref">{{ hero.reference }}</span> · {% include "_client.html" with client=hero.client %} · {{ hero.get_status_display }}</p>
+
+  {% if hero.gate.text %}
+  <p class="mb-2 {% if hero.gate.needs_md %}needs-md{% endif %}"><strong>Blocking:</strong> {{ hero.gate.text }}</p>
+  {% endif %}
+  {% if hero.blockers %}
+  <p class="small text-muted mb-1">Still missing, by item count:</p>
+  <ul class="blocker-chips" aria-label="Still missing before the QC audit">
+    {% for label, n in hero.blockers %}<li class="chip bad">{{ label }} · {{ n }}</li>{% endfor %}
+  </ul>
+  {% endif %}
+  {% if hero.items_total %}
+  <div class="d-flex align-items-center gap-2 mb-3">
+    <div class="meter flex-grow-1" role="img" aria-label="{{ hero.items_priced }} of {{ hero.items_total }} items priced"><span style="width: {{ hero.percent_priced }}%"></span></div>
+    <span class="small num">{{ hero.items_priced }}/{{ hero.items_total }} priced</span>
+  </div>
+  {% endif %}
+  <div class="d-flex flex-wrap gap-2">
+    {% if hero.status == "PENDING_VERIFICATION" %}<a class="btn btn-ink" href="{% url 'tenders:verify' hero.pk %}">Verify extracted fields</a>
+    {% elif hero.status == "DRAFTING" or hero.status == "COSTING" %}<a class="btn btn-ink" href="{% url 'items:sheet' hero.pk %}">Open the item sheet</a>{% endif %}
+    <a class="btn btn-outline-ink" href="{% url 'tenders:detail' hero.pk %}">Tender page</a>
+  </div>
+  {% else %}
+  <h2 id="hero-h" class="h5">No open deadlines</h2>
+  <p class="text-muted mb-2">None of your tenders has a deadline ahead of it.</p>
+  <a class="btn btn-ink" href="{% url 'tenders:upload' %}">Upload a tender</a>
+  {% endif %}
+</section>
+
+{# ---- Anything returned to me ---- #}
+{% if returned %}
+<section class="mb-4" aria-labelledby="ret-h">
+  <h2 id="ret-h" class="h6 flag">Returned to you · {{ returned|length }}</h2>
+  <ul class="dash-list">
+    {% for r in returned %}
+    <li><a class="dash-row" href="{% url r.url_name r.url_arg %}">
+      <span class="dash-main"><span class="ref">{{ r.tender.reference }}</span>
+        <span class="dash-title"><strong>{{ r.what }}</strong>{% if r.reason %} — {{ r.reason|truncatechars:140 }}{% endif %}</span>
+        <span class="dash-client">{{ r.tender.title|default:"(untitled)" }}</span></span>
+      <span class="dash-meta small text-muted">{{ r.when|timesince }} ago</span>
+    </a></li>
+    {% endfor %}
+  </ul>
+</section>
+{% endif %}
+
+{# ---- My tenders, with pricing progress ---- #}
+<section class="mb-4" aria-labelledby="mine-h">
+  <div class="d-flex flex-wrap justify-content-between align-items-baseline gap-2 mb-2">
+    <h2 id="mine-h" class="h6 mb-0">My tenders · {{ tenders|length }}</h2>
+    <a class="small" href="{% url 'tenders:upload' %}">Upload a tender</a>
+  </div>
+  {% if tenders %}
+  <ul class="dash-list">
+    {% for t in tenders %}
+    <li><a class="dash-row" href="{% if t.status == 'DRAFTING' or t.status == 'COSTING' %}{% url 'items:sheet' t.pk %}{% else %}{% url 'tenders:detail' t.pk %}{% endif %}">
+      <span class="dash-main"><span class="ref">{{ t.reference }}</span>
+        <span class="dash-title">{{ t.title|default:"(awaiting verification)" }}</span>
+        <span class="dash-client {% if t.gate.needs_md %}needs-md{% endif %}">{{ t.get_status_display }}{% if t.gate.who %} · {% if t.gate.who == "PM" %}your move{% else %}waiting on {{ t.gate.who }}{% endif %}{% endif %}</span></span>
+      <span class="dash-meta">
+        {% if t.items_total %}
+        <span class="dash-progress"><span class="meter"><span style="width: {{ t.percent_priced }}%"></span></span>
+          <span class="small num">{{ t.items_priced }}/{{ t.items_total }}</span></span>
+        {% elif t.status == "DRAFTING" or t.status == "COSTING" %}<span class="small text-muted">no items</span>{% endif %}
+        {% include "_days.html" with days=t.days_left %}
+      </span>
+    </a></li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="text-muted">You have no open tenders.</p>
+  {% endif %}
+</section>
+
+{# ---- Quotes outstanding: RFQs a supplier has not fully answered ---- #}
+<section class="mb-4" aria-labelledby="rfq-h">
+  <h2 id="rfq-h" class="h6">Quotes outstanding · {{ outstanding|length }}</h2>
+  {% if outstanding %}
+  <ul class="dash-list">
+    {% for o in outstanding %}
+    <li><a class="dash-row" href="{% url 'items:sheet' o.rfq.tender_id %}">
+      <span class="dash-main"><span class="ref">{{ o.rfq.tender.reference }}</span>
+        <span class="dash-title">{{ o.rfq.supplier.name }}</span>
+        <span class="dash-client">{{ o.waiting_items }} item{{ o.waiting_items|pluralize }} unquoted{% if o.rfq.reply_by %} · reply by {{ o.rfq.reply_by|date:"j M" }}{% endif %}</span></span>
+      <span class="dash-meta small {% if o.days_since_sent >= 3 %}flag{% else %}text-muted{% endif %}">sent {% if o.days_since_sent == 0 %}today{% else %}{{ o.days_since_sent }} day{{ o.days_since_sent|pluralize }} ago{% endif %}</span>
+    </a></li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="small text-muted mb-0">Every supplier you sent an RFQ to has quoted.</p>
+  {% endif %}
+</section>
+{% endblock %}

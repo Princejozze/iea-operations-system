@@ -1,0 +1,1 @@
+<span class="days{% if days is not None and days <= 3 %} soon{% endif %}">{% if days is None %}no deadline{% elif days < 0 %}deadline passed{% elif days == 0 %}due today{% else %}{{ days }} day{{ days|pluralize }} left{% endif %}</span>

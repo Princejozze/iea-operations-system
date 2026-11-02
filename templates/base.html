@@ -13,44 +13,7 @@
   <link rel="stylesheet" href="{% static 'css/custom.css' %}">
 </head>
 <body hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'>
-  <nav class="navbar navbar-expand-md navbar-dark navbar-iea">
-    <div class="container-fluid">
-      <a class="navbar-brand" href="{% url 'dashboard' %}">IEA Operations</a>
-      {% if user.is_authenticated and not user.must_change_password %}
-      <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#mainnav"
-              aria-controls="mainnav" aria-expanded="false" aria-label="Menu">
-        <span class="navbar-toggler-icon"></span>
-      </button>
-      <div class="collapse navbar-collapse" id="mainnav">
-        <ul class="navbar-nav me-auto">
-          {% if user.role != "CLEAR" %}
-          <li class="nav-item"><a class="nav-link" href="{% url 'tenders:list' %}">Tenders</a></li>
-          {% endif %}
-          {% if user.role == "PM" %}
-          <li class="nav-item"><a class="nav-link" href="{% url 'tenders:upload' %}">Upload tender</a></li>
-          {% endif %}
-          {% if user.role == "EXEC" %}
-          <li class="nav-item"><a class="nav-link" href="{% url 'approvals:registration_queue' %}">Registrations</a></li>
-          <li class="nav-item"><a class="nav-link" href="{% url 'approvals:submission_queue' %}">Submissions</a></li>
-          {% endif %}
-          {% if user.role == "AUDIT" or user.role == "EXEC" or user.role == "HOPS" %}
-          <li class="nav-item"><a class="nav-link" href="{% url 'audits:queue' %}">QC audits</a></li>
-          {% endif %}
-          {% if user.role == "PM" or user.role == "EXEC" or user.role == "FIN" or user.role == "HOPS" %}
-          <li class="nav-item"><a class="nav-link" href="{% url 'approvals:fund_list' %}">Fund requests</a></li>
-          {% endif %}
-        </ul>
-        <div class="d-flex align-items-center gap-2 py-2 py-md-0">
-          <span class="navbar-text small">{{ user.get_full_name|default:user.email }} · {{ user.get_role_display }}</span>
-          <form method="post" action="{% url 'logout' %}">
-            {% csrf_token %}
-            <button class="btn btn-sm btn-outline-light" type="submit">Log out</button>
-          </form>
-        </div>
-      </div>
-      {% endif %}
-    </div>
-  </nav>
+  {% load iea_nav %}{% main_nav %}
 
   <main class="container my-3 my-md-4">
     {% if messages %}

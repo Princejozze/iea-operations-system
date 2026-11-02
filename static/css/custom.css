@@ -177,6 +177,52 @@ a.ref-link { text-decoration: underline; text-underline-offset: 2px; }
 }
 
 /* ------------------------------------------------------------------------
+   Navigation: active section, count badges, breadcrumbs back to the tender.
+   ------------------------------------------------------------------------ */
+.navbar-iea .nav-link.active { color: #fff; font-weight: 600; box-shadow: inset 0 -2px 0 #fff; }
+@media (max-width: 1199.98px) { .navbar-iea .nav-link.active { box-shadow: inset 3px 0 0 #fff; padding-left: .6rem; } }
+.navbar-iea .nav-link { white-space: nowrap; }
+.nav-count { background: #fff; color: var(--iea-ink); font-variant-numeric: tabular-nums; font-weight: 600; margin-left: .2rem; }
+.navbar-iea .nav-count.needs-md-badge { background: var(--iea-brass) !important; color: #fff !important; }
+.toggler-count { position: absolute; top: -.35rem; right: -.45rem; font-size: .7rem; }
+@media (max-width: 1199.98px) { .navbar-iea .navbar-nav .nav-link { padding-top: .7rem; padding-bottom: .7rem; } }
+
+.crumbs .breadcrumb { font-size: .85rem; flex-wrap: wrap; row-gap: .15rem; }
+.crumbs .breadcrumb-item + .breadcrumb-item::before { color: var(--iea-muted); }
+.crumbs .breadcrumb-item.active { color: var(--iea-muted); }
+@media (max-width: 575.98px) {
+  .crumbs .breadcrumb-item a { display: inline-block; padding: .45rem 0; }
+  .crumbs .copy-btn { min-height: 36px; }
+}
+
+/* ------------------------------------------------------------------------
+   Dashboards: one row shape for every list, a table at 1280 and a card at 375.
+   ------------------------------------------------------------------------ */
+.dash-hero { background: var(--iea-card); border: 1px solid var(--iea-rule); border-radius: .4rem; padding: 1rem 1.1rem; }
+.dash-card { background: var(--iea-card); border: 1px solid var(--iea-rule); border-radius: .4rem; padding: .85rem 1rem; }
+.dash-list { list-style: none; padding: 0; margin: 0; }
+.dash-list > li + li { border-top: 1px solid var(--iea-rule); }
+.dash-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .35rem 1rem;
+  padding: .65rem .25rem; color: var(--iea-ink); text-decoration: none; min-height: 44px; }
+.dash-row:hover, .dash-row:focus-visible { background: var(--iea-paper); color: var(--iea-ink); }
+.dash-main { display: flex; flex-wrap: wrap; align-items: baseline; gap: .1rem .6rem; min-width: 0; flex: 1 1 18rem; }
+.dash-main .ref { font-size: .85rem; }
+.dash-title { flex: 1 1 14rem; min-width: 0; overflow-wrap: anywhere; }
+.dash-client { font-size: .82rem; color: var(--iea-muted); }
+.dash-meta { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem .9rem; margin-left: auto; }
+.dash-progress { display: inline-flex; align-items: center; gap: .4rem; }
+.dash-progress .meter { width: 5rem; }
+/* Compact lists sit in a third of the width: stack each row. */
+.dash-list.compact .dash-main { flex-basis: 100%; }
+.dash-list.compact .dash-title { flex-basis: 100%; }
+.dash-list.compact .dash-meta { margin-left: 0; }
+@media (max-width: 575.98px) {
+  .dash-hero, .dash-card { padding: .8rem .85rem; }
+  .dash-main, .dash-title { flex-basis: 100%; }
+  .dash-meta { margin-left: 0; width: 100%; justify-content: space-between; }
+}
+
+/* ------------------------------------------------------------------------
    Pricing rates (R22): the MD tries numbers, the total follows.
    ------------------------------------------------------------------------ */
 .rate-row { display: grid; gap: .25rem .75rem; grid-template-columns: minmax(0, 1fr); padding: .55rem 0; border-bottom: 1px solid var(--iea-rule); }
@@ -201,3 +247,8 @@ a.ref-link { text-decoration: underline; text-underline-offset: 2px; }
   .rates-result-card .card-body { padding: .6rem .75rem; }
   .rates-result-card .rate-changes, .rates-result-card .rates-note { display: none; }
 }
+.blocker-chips { display: flex; flex-wrap: wrap; gap: .35rem; margin: 0 0 .9rem; padding: 0; list-style: none; }
+.blocker-chips .chip { font-size: .8rem; padding: .3rem .55rem; }
+.crumbs .breadcrumb { align-items: center; }
+/* Disclosure toggles ("Add an item") are tap targets too. */
+@media (max-width: 575.98px) { summary { min-height: 44px; padding: .6rem 0; } }

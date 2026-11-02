@@ -2,7 +2,7 @@
 {% block title %}QC audit — {{ tender.reference }} — IEA Operations{% endblock %}
 {% block content %}
 <div class="mb-2">
-  <div class="mb-1">{% include "tenders/_reference.html" %}</div>
+  {% include "_crumbs.html" with tender=tender here="QC audit" %}
   <h1 class="h5 mb-1">QC audit: {{ tender.title|default:"(untitled)" }}</h1>
   <div class="small text-muted">
     <a href="{% url 'tenders:detail' tender.pk %}">Tender details</a> · <a href="{% url 'items:sheet' tender.pk %}">Item sheet</a> · {{ tender.get_status_display }}
