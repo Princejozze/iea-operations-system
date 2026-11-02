@@ -82,3 +82,25 @@ class AwardCaptureTests(AlertTestCase):
         self.backdate_prompt(tender, days_ago=7)
         [msg] = self.run_command(CMD)
         self.assertIn("Reminder", msg.body)
+
+
+class BidOpeningDateTests(AlertTestCase):
+    """The prompt follows Tender.bid_opening_date when set, else the submission deadline."""
+
+    def test_waits_for_a_later_opening_date(self):
+        self.new_tender(
+            S.SUBMITTED, submission_deadline=local_noon(-2), bid_opening_date=timezone.now() + timedelta(days=3)
+        )
+        self.assertEqual(self.run_command(CMD), [])
+
+    def test_prompts_once_the_opening_date_passes(self):
+        tender = self.new_tender(S.SUBMITTED, submission_deadline=local_noon(-5), bid_opening_date=local_noon(-2))
+        [msg] = self.run_command(CMD)
+        self.assertIn(tender.reference, msg.subject)
+        self.assertIn(f"opened on {timezone.localdate(local_noon(-2)):%d %B %Y}", msg.body)
+
+    def test_empty_opening_date_means_the_deadline(self):
+        tender = self.new_tender(S.SUBMITTED, submission_deadline=local_noon(-1))
+        self.assertIsNone(tender.bid_opening_date)
+        self.assertEqual(tender.opening_at, tender.submission_deadline)
+        self.assertEqual(len(self.run_command(CMD)), 1)

@@ -233,6 +233,13 @@ class Tender(Auditable):
     )
     submission_deadline = models.DateTimeField(null=True, blank=True)
     clarification_deadline = models.DateTimeField(null=True, blank=True)
+    # Empty = opened at the submission deadline, as PPRA standard documents provide. Set it only
+    # when the client states a different opening. Not copied from the deadline on save: a copy
+    # would go stale when the deadline is extended. Read it through ``opening_at``.
+    bid_opening_date = models.DateTimeField(
+        null=True, blank=True,
+        help_text="When bids are publicly opened. Leave empty if at the submission deadline.",
+    )
     # Blank = not yet verified by the PM. NOT_APPLICABLE is a real answer (§8).
     bid_security_type = models.CharField(
         max_length=32, choices=BidSecurityType.choices, blank=True
@@ -303,6 +310,14 @@ class Tender(Auditable):
                 name="tenders_clarification_before_submission",
             ),
             models.CheckConstraint(
+                condition=(
+                    Q(bid_opening_date__isnull=True)
+                    | Q(submission_deadline__isnull=True)
+                    | Q(bid_opening_date__gte=F("submission_deadline"))
+                ),
+                name="tenders_bid_opening_not_before_submission",
+            ),
+            models.CheckConstraint(
                 condition=Q(bid_security_type__in=["", *BidSecurityType.values]),
                 name="tenders_bid_security_type_valid",
             ),
@@ -348,6 +363,8 @@ class Tender(Auditable):
             and self.clarification_deadline > self.submission_deadline
         ):
             errors["clarification_deadline"] = "The clarification deadline must not be after the submission deadline."
+        if self.bid_opening_date and self.submission_deadline and self.bid_opening_date < self.submission_deadline:
+            errors["bid_opening_date"] = "Bids cannot be opened before the submission deadline."
         return errors
 
     def clean(self):
@@ -385,6 +402,11 @@ class Tender(Auditable):
         return fund_requests is not None and fund_requests.filter(
             purpose=NEST_FUNDS_PURPOSE, status="PAID"
         ).exists()
+
+    @property
+    def opening_at(self):
+        """When bids are opened: ``bid_opening_date`` if set, else the submission deadline."""
+        return self.bid_opening_date or self.submission_deadline
 
     @property
     def is_frozen(self):

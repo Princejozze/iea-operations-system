@@ -5,11 +5,11 @@ The legacy sheets recorded an award for 6 of 183 submitted tenders, so there
 is no win rate to report. This command closes that gap by asking the PM to
 record the outcome once the bids have been opened.
 
-There is no separate bid-opening date on Tender: under the PPRA standard
-tendering documents bids are opened publicly at the submission deadline, so
-the deadline is the opening time.
+The prompt runs from bid opening: ``Tender.bid_opening_date`` when the client
+states one, otherwise the submission deadline — under the PPRA standard
+tendering documents bids are opened publicly at the deadline (``Tender.opening_at``).
 
-A tender is prompted while it is SUBMITTED, its deadline has passed, and it
+A tender is prompted while it is SUBMITTED, its bids have been opened, and it
 has no TenderOutcome or only a PENDING one. The first prompt goes out on the
 first run after opening; it then repeats every ``--every`` days (default 7)
 until the outcome is recorded, because an award decision can take weeks and a
@@ -27,6 +27,7 @@ Cron, daily:
 from datetime import timedelta
 
 from django.db.models import Q
+from django.db.models.functions import Coalesce
 from django.utils import timezone
 
 from accounts.models import Role, User
@@ -48,10 +49,11 @@ class Command(AlertCommand):
         # Repeat only if the last prompt was on or before this local date.
         repeat_cutoff = start_of_local_day(local_today() - timedelta(days=max(every, 1) - 1))
         tenders = (
-            Tender.objects.filter(status=TenderStatus.SUBMITTED, submission_deadline__lte=timezone.now())
+            Tender.objects.annotate(opens_at=Coalesce("bid_opening_date", "submission_deadline"))
+            .filter(status=TenderStatus.SUBMITTED, opens_at__lte=timezone.now())
             .filter(Q(outcome__isnull=True) | Q(outcome__award_status=AwardStatus.PENDING))
             .select_related("project_manager", "client", "outcome")
-            .order_by("submission_deadline")
+            .order_by("opens_at")
         )
         for tender in tenders:
             previous = last_sent(KIND, tender)
@@ -63,7 +65,7 @@ class Command(AlertCommand):
             )
             outcome = getattr(tender, "outcome", None)
             position_known = bool(outcome and outcome.bid_opening_position)
-            opened = timezone.localdate(tender.submission_deadline)
+            opened = timezone.localdate(tender.opening_at)
             if position_known:
                 ask = (f"The position at opening is recorded ({outcome.get_bid_opening_position_display()}), "
                        "but the award result is still pending. Record it as soon as the client announces it.")
