@@ -229,19 +229,21 @@ class CostingEndToEndTests(ItemFixtures, TestCase):
         item.save()
         self.assertFigures(Item.objects.get(pk=item.pk), EXPECTED_A)
 
-    def test_7_a_new_item_gets_the_new_defaults_and_recost_is_the_only_way_to_move_an_old_one(self):
+    def test_7_a_new_tender_gets_the_new_defaults_and_only_the_md_moves_an_old_bid(self):
         old = self.cost_item()
         defaults = CostingDefaults.objects.get()
         defaults.margin_pct = D("25")
         defaults.save()
 
-        new = self.cost_item()  # costed after the change
+        new = self.cost_item()  # a NEW tender, created after the change: copies the new baseline (R22)
         self.assertFigures(new, EXPECTED_C_CHANGED)
         self.assertEqual(new.margin_rate, D("0.25"))
 
-        self.assertFigures(Item.objects.get(pk=old.pk), EXPECTED_A)  # the old one is untouched
+        self.assertFigures(Item.objects.get(pk=old.pk), EXPECTED_A)  # the old bid is untouched
+        old.recost_at_tender_rates()  # its tender's rates did not move, so neither does it
+        self.assertFigures(Item.objects.get(pk=old.pk), EXPECTED_A)
 
-        old.recost_at_current_rates()  # the deliberate action
+        old.tender.costing_rates.apply(self.md, margin_pct=D("25"))  # the deliberate action (R22)
         self.assertFigures(Item.objects.get(pk=old.pk), EXPECTED_C_CHANGED)
         self.assertEqual(Item.objects.get(pk=old.pk).margin_rate, D("0.25"))
 

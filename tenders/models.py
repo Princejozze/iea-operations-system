@@ -1,7 +1,7 @@
 """
 tenders — app 5 in CLAUDE.md §1. Imports only from core and accounts.
 
-Holds Tender, TenderAssignment, TenderOutcome and TenderDocument, and **all
+Holds Tender, TenderAssignment, TenderOutcome, TenderDocument, TenderCostingRates (R22), and **all
 status transition methods** (R19). Lot and TenderExtraction belong here too and
 arrive with the PDF intake work.
 
@@ -23,17 +23,20 @@ installed yet, the accessor does not exist and the transition is refused.
 """
 
 from contextlib import contextmanager
+from dataclasses import dataclass
+from decimal import Decimal
 
 from django.conf import settings
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.core.mail import send_mail
-from django.db import models, transaction
+from django.core.validators import MaxValueValidator, MinValueValidator
+from django.db import IntegrityError, models, transaction
 from django.db.models import F, Q
 from django.utils import timezone
 
 from accounts.models import Role
 from core.audit import audit_actor
-from core.models import AuditAction, AuditEntry, Auditable, AuditableQuerySet
+from core.models import AuditAction, AuditEntry, Auditable, AuditableQuerySet, CostingDefaults, CostingRates
 from core.references import next_tender_reference
 
 # ---------------------------------------------------------------------------
@@ -194,6 +197,7 @@ class TenderManager(models.Manager.from_queryset(TenderQuerySet)):
                 tender=tender, from_pm=None, to_pm=uploaded_by, assigned_by=uploaded_by,
                 reason="Registered by upload.",
             )
+            TenderCostingRates.create_for(tender)  # R22: the bid's own rates, from the company baseline
             if pdf is not None:
                 TenderDocument.objects.create(
                     tender=tender, kind=TenderDocumentKind.TENDER_PDF, file=pdf,
@@ -923,3 +927,292 @@ class TenderExtraction(Auditable):
 
     def __str__(self):
         return f"{self.tender.reference}: extraction {self.outcome}"
+
+
+# ---------------------------------------------------------------------------
+# TenderCostingRates — R22: the MD's per-bid estimate parameters
+# ---------------------------------------------------------------------------
+
+# R22: the MD may tune a bid's rates only while its items may be priced. Leaving COSTING
+# locks them, alongside the R4 exchange-rate lock; R9 returning the tender to COSTING
+# unlocks them. PENDING_ELIGIBILITY_DECISION is outside this set, so R9a freezes them too.
+RATES_EDITABLE_STATUSES = WORK_ALLOWED_STATUSES  # DRAFTING, COSTING
+
+
+def _rate_percent_field(help_text):
+    return models.DecimalField(
+        max_digits=5, decimal_places=2,
+        validators=[MinValueValidator(Decimal("0")), MaxValueValidator(Decimal("100"))],
+        help_text=f"Percent, e.g. 10 means 10%. {help_text}",
+    )
+
+
+def _stored_status(tender_id):
+    return Tender._base_manager.filter(pk=tender_id).values_list("status", flat=True).first()
+
+
+@dataclass(frozen=True)
+class BidPreview:
+    """What the bid would come to at a candidate rate set. Nothing was saved."""
+
+    total_selling: Decimal  # sum of the priced items' total_selling, in TZS, ex VAT (§4)
+    priced_items: int
+    unpriced_items: int  # not in the total: they have no price to cost yet
+
+
+@dataclass(frozen=True)
+class RatesApplied:
+    """The outcome of TenderCostingRates.apply()."""
+
+    old_rates: dict  # field -> value: percents, labour in TZS per hour
+    new_rates: dict
+    old_total: Decimal  # the bid total (ex VAT) before and after re-costing
+    new_total: Decimal
+    items_recosted: int
+
+
+class TenderCostingRatesQuerySet(AuditableQuerySet):
+    def delete(self):
+        raise ValidationError("A tender's costing rates cannot be deleted (R22).")
+
+
+class TenderCostingRates(Auditable):
+    """
+    The estimate parameters for ONE bid (R22). ``CostingDefaults`` is the company
+    baseline; this row is copied from it when the tender is created, and from then on
+    the costing chain prices this tender's items at these rates, not the defaults.
+
+    The MD tunes them to find a competitive price: ``preview()`` returns the bid total at
+    candidate values without saving anything, and ``apply()`` sets them and re-costs every
+    item. Only EXEC may apply; every change is audited (R7). They are editable only while
+    the tender is DRAFTING or COSTING, and lock when it leaves COSTING (with R4).
+
+    The formulas never change here (§4), only the numbers. VAT is not a per-bid lever: it
+    is statutory, applied at bid-summary level, and still comes from CostingDefaults.
+    """
+
+    RATE_FIELDS = (
+        "shipping_pct", "duty_pct", "cnf_pct", "labour_rate_tzs_per_hour", "overhead_pct",
+        "margin_pct", "maintenance_pct", "cost_of_capital_pct",
+    )
+    # percent field -> CostingRates fraction field
+    FRACTION_OF = {
+        "shipping_pct": "shipping_rate", "duty_pct": "duty_rate", "cnf_pct": "cnf_rate",
+        "overhead_pct": "overhead_rate", "margin_pct": "margin_rate",
+        "maintenance_pct": "maintenance_rate", "cost_of_capital_pct": "cost_of_capital_rate",
+    }
+
+    tender = models.OneToOneField(Tender, on_delete=models.PROTECT, related_name="costing_rates", editable=False)
+    shipping_pct = _rate_percent_field("Shipping, as % of import material (only when freight is not in the price).")
+    duty_pct = _rate_percent_field("Duty, as % of CIF.")
+    cnf_pct = _rate_percent_field("C&F, as % of CIF.")
+    labour_rate_tzs_per_hour = models.DecimalField(
+        max_digits=12, decimal_places=2, validators=[MinValueValidator(Decimal("0"))],
+        help_text="Labour rate in TZS per hour.",
+    )
+    overhead_pct = _rate_percent_field("Overhead.")
+    margin_pct = _rate_percent_field("Gross operating margin.")
+    maintenance_pct = _rate_percent_field("Maintenance and guarantee.")
+    cost_of_capital_pct = _rate_percent_field(
+        "Computed and stored, NOT added to the selling price (§4, open question)."
+    )
+
+    objects = TenderCostingRatesQuerySet.as_manager()
+
+    class Meta:
+        verbose_name = "tender costing rates"
+        verbose_name_plural = "tender costing rates"
+        constraints = [
+            *[
+                models.CheckConstraint(
+                    condition=Q(**{f"{name}__gte": 0, f"{name}__lte": 100}),
+                    name=f"tenders_costingrates_{name}_range",
+                )
+                for name in (
+                    "shipping_pct", "duty_pct", "cnf_pct", "overhead_pct", "margin_pct",
+                    "maintenance_pct", "cost_of_capital_pct",
+                )
+            ],
+            models.CheckConstraint(
+                condition=Q(labour_rate_tzs_per_hour__gte=0),
+                name="tenders_costingrates_labour_rate_non_negative",
+            ),
+        ]
+
+    def __str__(self):
+        return f"Costing rates for {self.tender.reference}"
+
+    # -- creation ---------------------------------------------------------------------
+
+    @classmethod
+    def baseline_values(cls):
+        """The company defaults (CostingDefaults.current()) as this model's field values."""
+        current = CostingDefaults.current()
+        hundred, cents = Decimal("100"), Decimal("0.01")
+        values = {pct: (getattr(current, frac) * hundred).quantize(cents) for pct, frac in cls.FRACTION_OF.items()}
+        values["labour_rate_tzs_per_hour"] = current.labour_rate_tzs_per_hour
+        return values
+
+    @classmethod
+    def create_for(cls, tender):
+        """Copy the company baseline onto a tender (R22). Idempotent: an existing row is
+        returned untouched."""
+        existing = cls._base_manager.filter(tender_id=tender.pk).first()
+        if existing is not None:
+            return existing
+        row = cls(tender=tender, **cls.baseline_values())
+        try:
+            with transaction.atomic(), row._system_write():
+                row.save()
+        except IntegrityError:  # created concurrently: one row per tender
+            return cls._base_manager.get(tender_id=tender.pk)
+        return row
+
+    @classmethod
+    def for_tender(cls, tender):
+        """This tender's rates. Every tender gets its row at upload; one created any other
+        way gets the company baseline the first time its rates are needed (audited)."""
+        return cls.create_for(tender)
+
+    # -- writes are the model's own (R22) -----------------------------------------------
+
+    _write_allowed = False
+
+    @contextmanager
+    def _system_write(self):
+        self._write_allowed = True
+        try:
+            yield
+        finally:
+            self._write_allowed = False
+
+    @property
+    def is_locked(self):
+        """True unless the tender is DRAFTING or COSTING. Reads the stored status."""
+        return _stored_status(self.tender_id) not in RATES_EDITABLE_STATUSES
+
+    @staticmethod
+    def _lock_error(status):
+        return TransitionError(
+            f"The tender's costing rates are locked: it is {status}. They can be changed only "
+            f"while it is {' or '.join(RATES_EDITABLE_STATUSES)}; they lock when it leaves "
+            "COSTING, and a rejection that returns it to COSTING (R9) unlocks them (R22).",
+            code="r22",
+        )
+
+    def clean(self):
+        super().clean()
+        if not self._state.adding:
+            status = _stored_status(self.tender_id)
+            if status not in RATES_EDITABLE_STATUSES:
+                raise self._lock_error(status)
+
+    def save(self, *args, **kwargs):
+        kwargs.pop("update_fields", None)
+        if not self._write_allowed:
+            raise GuardedFieldError(
+                {"__all__": "A tender's costing rates are created with the tender and changed only "
+                            "by TenderCostingRates.apply(), by the MD (R22)."}
+            )
+        if not self._state.adding:
+            stored = type(self)._base_manager.filter(pk=self.pk).values_list("tender_id", flat=True).first()
+            if stored is not None and stored != self.tender_id:
+                raise GuardedFieldError({"tender": "Costing rates never move between tenders."})
+            status = _stored_status(self.tender_id)
+            if status not in RATES_EDITABLE_STATUSES:
+                raise self._lock_error(status)
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise ValidationError("A tender's costing rates cannot be deleted (R22).")
+
+    # -- reading ----------------------------------------------------------------------
+
+    def values(self):
+        return {name: getattr(self, name) for name in self.RATE_FIELDS}
+
+    def rates(self):
+        """These values as a CostingRates (fractions), as the costing chain takes them.
+        VAT comes from CostingDefaults: it is bid-level and statutory, not a lever."""
+        hundred = Decimal("100")
+        fractions = {frac: Decimal(getattr(self, pct)) / hundred for pct, frac in self.FRACTION_OF.items()}
+        return CostingRates(
+            labour_rate_tzs_per_hour=Decimal(self.labour_rate_tzs_per_hour),
+            vat_rate=CostingDefaults.current().vat_rate,
+            **fractions,
+        )
+
+    def _candidate(self, overrides):
+        """An unsaved copy with ``overrides`` applied and validated exactly like a real edit."""
+        unknown = sorted(set(overrides) - set(self.RATE_FIELDS))
+        if unknown:
+            raise ValidationError({name: "Not a tender costing rate." for name in unknown})
+        trial = type(self)(tender_id=self.tender_id, **{**self.values(), **overrides})
+        trial.clean_fields(exclude=["tender"])  # ranges and decimal places; values converted
+        return trial
+
+    # -- preview and apply (R22) ------------------------------------------------------
+
+    @staticmethod
+    def _items(tender):
+        items = tender._related("items")
+        if items is None:  # fail closed, like every gate that needs an app below this one
+            raise TransitionError("The items app is not installed: there is nothing to cost.", code="r22")
+        return items
+
+    def preview(self, **candidate):
+        """The bid total if the rates were ``candidate`` (any subset of RATE_FIELDS; the rest
+        as they are now). Saves NOTHING, so the MD can try values freely. Allowed when
+        locked too: trying a number changes nothing."""
+        rates = self._candidate(candidate).rates()
+        total, priced, unpriced = Decimal(0), 0, 0
+        for item in self._items(self.tender).all():  # reverse accessor: no import of items (§1)
+            line = item.total_selling_at(rates)
+            if line is None:
+                unpriced += 1
+            else:
+                priced += 1
+                total += line
+        return BidPreview(total_selling=total, priced_items=priced, unpriced_items=unpriced)
+
+    @staticmethod
+    def _bid_total(items):
+        return sum(
+            (t for t in items.values_list("total_selling_price_tzs", flat=True) if t is not None), Decimal(0)
+        )
+
+    def apply(self, user, **new_values):
+        """
+        The MD sets this bid's rates (R22). In one transaction: refuse unless the actor is
+        EXEC and the tender is DRAFTING or COSTING; save the new values (an UPDATE
+        AuditEntry recording each old and new value, attributed to the MD); then re-cost
+        every item at them (each item's own AuditEntry records its old and new figures).
+        Values not given keep their current setting. Applying the current values is a no-op.
+        """
+        if user is None or not user.is_active or user.role != Role.EXECUTIVE:
+            raise PermissionDenied("Only the MD (EXEC) may set a tender's costing rates (R22).")
+        with transaction.atomic(), audit_actor(user):
+            # Lock the tender row first, as the transition methods do: a concurrent
+            # submit_for_audit waits, so the rates cannot change once the lock is taken.
+            tender = Tender.objects.select_for_update().get(pk=self.tender_id)
+            if tender.status not in RATES_EDITABLE_STATUSES:
+                raise self._lock_error(tender.status)
+            row = type(self)._base_manager.select_for_update().get(pk=self.pk)
+            old_values = row.values()
+            new_values = row._candidate(new_values).values()
+            items = self._items(tender)
+            old_total = self._bid_total(items)
+            if new_values == old_values:
+                return RatesApplied(old_values, new_values, old_total, old_total, 0)
+            for name, value in new_values.items():
+                setattr(row, name, value)
+            row.full_clean(exclude=["tender"])
+            with row._system_write():
+                row.save()
+            recosted = 0
+            for item in items.select_for_update().order_by("pk"):
+                item.recost_at_tender_rates()
+                recosted += 1
+            new_total = self._bid_total(items)
+        self.refresh_from_db()
+        return RatesApplied(old_values, new_values, old_total, new_total, recosted)

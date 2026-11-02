@@ -59,7 +59,7 @@ Twelve apps, in dependency order. **An app may only import from apps above it.**
 | 2 | `accounts` | `User`, roles, rank, `EmailAlias` | 1 |
 | 3 | `documents` | Letterhead template rendering, the `Document` registry. **Renders from a plain context dict and never imports a domain model or enum** — that is what keeps it independent of everything below it | 1 |
 | 4 | `suppliers` | `Supplier` only — master data, no tender or item dependency | 1 |
-| 5 | `tenders` | `Tender`, `Lot`, `TenderDocument`, `TenderExtraction`, `TenderAssignment`, `TenderOutcome`, PDF→Markdown, Gemini extraction, **all status transition methods** | 1 |
+| 5 | `tenders` | `Tender`, `Lot`, `TenderDocument`, `TenderExtraction`, `TenderAssignment`, `TenderOutcome`, `TenderCostingRates`, PDF→Markdown, Gemini extraction, **all status transition methods** | 1 |
 | 6 | `items` | `Item`, `ItemAttachment`, `Quote`, `SupplierSuggestion`, the costing chain, currency conversion, bulk specification import, **AI-assisted OEM discovery**, **RFQ dispatch and chasing** | 1 |
 | 7 | `audits` | `QCAudit`, `QCAuditLine`, specification variance flagging | 1 |
 | 8 | `approvals` | `Approval`, `EligibilityReview`, `FundRequest` | 1 |
@@ -224,6 +224,29 @@ without a deploy, every change is audited under R7 so an old bid can be explaine
 with the rates that applied at the time, and `items` never has to touch a shared
 file during parallel work. Each `Item` stores the values it was costed with, so
 changing a default never silently reprices a past bid.
+
+**Per-tender rates (R22).** `CostingDefaults` is the company *baseline*. Each tender
+holds its own **`TenderCostingRates`** (in `tenders`), copied from
+`CostingDefaults.current()` when the tender is created: shipping %, duty %, C&F %,
+labour rate, overhead %, margin %, maintenance % and cost-of-capital %. **The costing
+chain prices a tender's items at that tender's rates, never the defaults** — the MD
+tunes them on an individual bid to find a competitive price. Editing the defaults
+changes new tenders only.
+
+- **Only `EXEC` may change them**, through `TenderCostingRates.apply()`; every change is
+  audited (R7). No assignment-and-save, admin, `queryset.update()` or delete.
+- **`preview(**candidate)` returns the bid total at a candidate rate set without saving
+  anything**, so the MD can try values. It is validated exactly like a real edit, and
+  `apply()` with the same values produces the same total.
+- **`apply(user, **values)`** saves the new values (an `AuditEntry` recording each old
+  and new value) and re-costs every item of the tender at them, in one transaction.
+- **They lock when the tender leaves `COSTING`** (R22), alongside the R4 exchange-rate
+  lock. Editable only in `DRAFTING` or `COSTING`.
+- **The formulas are fixed.** Only the numbers change.
+- **VAT is not a per-bid lever.** It is statutory, applied at bid level, and still
+  comes from `CostingDefaults`.
+- `items` reads `TenderCostingRates` upward; `tenders` re-costs items through the
+  `tender.items` reverse accessor, so neither breaks §1.
 
 | Constant | Value |
 |---|---|
@@ -556,6 +579,7 @@ Tender  (tenders)
   ├── TenderExtraction    (raw AI output + confidence + verification state)
   ├── TenderAssignment    (history of which PM holds it, and who moved it)
   ├── TenderOutcome       (position at opening, award result)
+  ├── TenderCostingRates  (one per tender: the MD's per-bid rates, R22)
   ├── Lot
   ├── Item                (items) ── ItemAttachment (brochure | quotation | datasheet)
   ├── QCAudit             (audits) ── QCAuditLine
@@ -750,7 +774,8 @@ Enforce per §4 "Enforcement". Cite these by number when working on them.
   `APPROVED`, by an `EXEC`.
 - **R4 — Exchange rates freeze at audit.** The `COSTING → PENDING_AUDIT`
   transition stamps `exchange_rate_locked_at`. R9 returning a tender to `COSTING`
-  clears it; re-entering `PENDING_AUDIT` stamps it afresh.
+  clears it; re-entering `PENDING_AUDIT` stamps it afresh. The tender's costing
+  rates lock at the same point (R22).
 - **R5 — Clearing agents see post-award only.** Enforce in querysets, not templates.
 - **R6 — Every item belongs to a tender.** Mandatory FK; orphans impossible.
 - **R7 — The audit trail is immutable.** Every create, update, status change and
@@ -804,6 +829,16 @@ Enforce per §4 "Enforcement". Cite these by number when working on them.
   7 days. While `must_change_password` is true, middleware blocks the user from
   every page except the change-password form, the Django admin included.
   Role is mandatory at creation.
+- **R22 — Each tender is costed at its own rates, which only the MD sets, and which
+  lock when the tender leaves `COSTING`.** `TenderCostingRates` is copied from
+  `CostingDefaults` when the tender is created, and the costing chain uses it, not
+  the defaults. Only `EXEC` may change it, through `apply()`, which writes an
+  `AuditEntry` recording old and new values and re-costs every item. `preview()`
+  returns the bid total for candidate rates without saving. Changes are refused
+  unless the tender is `DRAFTING` or `COSTING`: the rates lock when it leaves
+  `COSTING`, alongside R4, and R9 returning it to `COSTING` unlocks them. While it is
+  in `PENDING_ELIGIBILITY_DECISION` they are frozen (R9a). The formulas never change,
+  only the numbers.
 
 ---
 

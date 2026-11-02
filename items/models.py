@@ -54,7 +54,7 @@ from django.utils import timezone
 
 from accounts.models import Role
 from core.audit import audit_actor
-from core.models import AuditBypassError, Auditable, AuditableQuerySet, CostingDefaults, CostingRates
+from core.models import AuditBypassError, Auditable, AuditableQuerySet, CostingRates
 from core.references import next_item_reference
 from documents.models import Document
 from documents.rfq import SALES_CC, normalise_recipients, with_required_cc
@@ -64,6 +64,7 @@ from tenders.models import (
     Currency,
     GuardedFieldError,
     Tender,
+    TenderCostingRates,
     TransitionError,
 )
 
@@ -305,9 +306,10 @@ class Item(GuardedWrites, Auditable):
     labour_selling = _money()
     maintenance = _money()
 
-    # The company rates this item was costed with (CostingDefaults.current(), copied
+    # The rates this item was costed with: its tender's TenderCostingRates (R22), copied
     # at first costing): changing a default never silently reprices a past bid (§4).
-    # Fractions, not percents. Refreshed only by recost_at_current_rates().
+    # Fractions, not percents. Refreshed only by recost_at_tender_rates(), which the
+    # MD's TenderCostingRates.apply() runs on every item of the tender.
     rates_snapshot_at = models.DateTimeField(null=True, blank=True, editable=False)
     shipping_rate = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True, editable=False)
     duty_rate = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True, editable=False)
@@ -518,31 +520,41 @@ class Item(GuardedWrites, Auditable):
         if self.fob_unit_price is None and self.local_unit_cost is None:
             self._clear_costing()  # nothing to cost yet: unpriced
             return
-        if self.rates_snapshot_at is None:  # first costing: copy the company rates onto the item
-            for name, value in CostingDefaults.current().as_dict().items():
+        if self.rates_snapshot_at is None:  # first costing: copy the tender's rates onto the item (R22)
+            for name, value in TenderCostingRates.for_tender(self.tender).rates().as_dict().items():
                 setattr(self, name, value)
             self.rates_snapshot_at = timezone.now()
         fx_rate, fx_as_of = self._exchange_rate()
         self.fx_rate, self.fx_rate_as_of = fx_rate, fx_as_of
-        result = compute_costing(
-            CostingInputs(
-                fob_unit_price=_decimal(self.fob_unit_price or 0),
-                fx_rate=fx_rate if fx_rate is not None else Decimal(1),
-                local_unit_cost=_decimal(self.local_unit_cost or 0),
-                quantity=self.quantity,
-                shipping_applies=self.shipping_applies,
-                risk_rate=_decimal(self.risk_pct) / 100,
-                labour_hours_per_unit=_decimal(self.labour_hours_per_unit),
-                freight_included=freight_included(self.incoterm),
-            ),
-            self.costing_rates,
-        )
+        result = compute_costing(self._costing_inputs(fx_rate), self.costing_rates)
         for figure, field in self.BREAKDOWN_FIELDS.items():
             setattr(self, field, getattr(result, figure))
 
-    def recost_at_current_rates(self):
-        """Deliberately re-copy the company rates (CostingDefaults.current()) onto this
-        item and reprice it. The only way an existing item's rates change (§4)."""
+    def _costing_inputs(self, fx_rate):
+        return CostingInputs(
+            fob_unit_price=_decimal(self.fob_unit_price or 0),
+            fx_rate=fx_rate if fx_rate is not None else Decimal(1),
+            local_unit_cost=_decimal(self.local_unit_cost or 0),
+            quantity=self.quantity,
+            shipping_applies=self.shipping_applies,
+            risk_rate=_decimal(self.risk_pct) / 100,
+            labour_hours_per_unit=_decimal(self.labour_hours_per_unit),
+            freight_included=freight_included(self.incoterm),
+        )
+
+    def total_selling_at(self, rates):
+        """This line's total_selling (TZS, ex VAT) at ``rates``, a CostingRates, WITHOUT
+        saving anything: the MD's what-if (TenderCostingRates.preview, R22). Same chain,
+        same exchange rate as a real costing. None if the item has no price yet."""
+        if self.fob_unit_price is None and self.local_unit_cost is None:
+            return None
+        fx_rate, _ = self._exchange_rate()
+        return compute_costing(self._costing_inputs(fx_rate), rates).total_selling
+
+    def recost_at_tender_rates(self):
+        """Re-copy the tender's current rates (TenderCostingRates, R22) onto this item and
+        reprice it. Run on every item by TenderCostingRates.apply(); the only way an
+        existing item's rates change, so editing CostingDefaults never reprices a bid (§4)."""
         self.rates_snapshot_at = None
         self.save()
 

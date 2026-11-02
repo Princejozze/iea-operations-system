@@ -162,28 +162,28 @@ class RateSnapshotTests(ItemFixtures, TestCase):
         self.assertEqual(item.total_selling_price_tzs, before)
         self.assertEqual(item.margin_rate, D("0.2"))
 
-    def test_a_new_item_uses_the_new_default(self):
+    def test_an_item_on_a_new_tender_uses_the_new_default(self):
         old = self.priced_item()
         self.raise_margin()
-        new = self.priced_item()
+        new = self.priced_item()  # priced_item drafts a new tender, which copies the new baseline (R22)
         self.assertEqual(new.margin_rate, D("0.25"))
         self.assertGreater(new.total_selling_price_tzs, old.total_selling_price_tzs)
 
-    def test_recosting_at_current_rates_is_deliberate_and_updates_the_item(self):
+    def test_recosting_uses_the_tenders_rates_not_the_company_default(self):
         item = self.priced_item()
         before = item.total_selling_price_tzs
         self.raise_margin()
-        item.recost_at_current_rates()
+        item.recost_at_tender_rates()
         item.refresh_from_db()
-        self.assertEqual(item.margin_rate, D("0.25"))
-        self.assertGreater(item.total_selling_price_tzs, before)
+        self.assertEqual(item.margin_rate, D("0.2"))  # the tender's rate, still 20% (R22)
+        self.assertEqual(item.total_selling_price_tzs, before)
 
-    def test_a_default_edited_while_the_item_was_unpriced_applies_at_first_costing(self):
-        item = self.make_item(quantity=10)  # drafted, not yet priced
+    def test_a_default_edited_after_the_tender_was_created_does_not_reach_it(self):
+        item = self.make_item(quantity=10)  # drafted, not yet priced; the tender holds its own rates
         self.raise_margin()
         item.fob_unit_price, item.currency = D("100"), Currency.USD
         item.save()
-        self.assertEqual(item.margin_rate, D("0.25"))
+        self.assertEqual(item.margin_rate, D("0.2"))  # first costing copies the TENDER's rates (R22)
 
 
 class ExchangeRateTests(ItemFixtures, TestCase):
