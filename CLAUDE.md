@@ -602,7 +602,8 @@ PM-confirmed: `title`, `client` (FK), `client_address`, `official_reference`,
 `submission_deadline`, `clarification_deadline`, `bid_security_required`,
 `bid_security_type`, `site_visit_required`, `site_visit_date`,
 `special_requirements`, `required_forms`, `category`.
-Assignment: `project_manager` — role `PM` only, changed only by `EXEC` (R13).
+Assignment: `project_manager` — role `PM` only, changed only by `EXEC`, to any
+active PM, at any status (R13).
 
 `previous_status` exists so the eligibility side state can return a tender to the
 stage it came from.
@@ -799,8 +800,14 @@ Enforce per §4 "Enforcement". Cite these by number when working on them.
 - **R12 — AI extraction is a draft, never truth.** No extracted value reaches
   `Tender` without explicit PM confirmation. Extraction failure always leaves a
   completable form.
-- **R13 — Only `EXEC` reassigns a tender**, and only to a user with role `PM`.
-  The change writes a `TenderAssignment`; both PMs are notified.
+- **R13 — Only `EXEC` reassigns a tender: to any active PM, at any status.** The
+  assignee must be an active user with role `PM`; that has not changed. There is
+  **no status restriction** — `SUBMITTED`, `WON`, `LOST` and `WITHDRAWN` included —
+  because outcome capture, award recording and post-award work still need an
+  owner, and reassignment is the only way work moves between people. Access
+  follows the field: the new PM gains the tender's PM rights and the previous PM
+  loses them at once. The change writes a `TenderAssignment`; both PMs are
+  notified. Never add a status gate to `Tender.reassign()`.
 - **R14 — Announcements are one-way, `EXEC` only.** Not a chat channel.
 - **R15 — Every tender needs MD registration approval.** No item, costing or RFQ
   work may begin before it. Declining sends the tender to `WITHDRAWN`.

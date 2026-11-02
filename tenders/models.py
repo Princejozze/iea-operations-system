@@ -680,8 +680,15 @@ class Tender(Auditable):
     # -- R13 ----------------------------------------------------------------------------
 
     def reassign(self, user, new_pm, *, reason=""):
-        """R13: only EXEC reassigns, only to an active PM. Writes a
-        TenderAssignment and notifies both PMs once the change commits."""
+        """R13: only EXEC reassigns, to any active PM, at ANY status. Writes a
+        TenderAssignment and notifies both PMs once the change commits.
+
+        Deliberately no status check — not even after SUBMITTED, WON, LOST or
+        WITHDRAWN: outcome capture, award recording and post-award work still need
+        an owner, and reassignment is the only way work moves between people.
+        Access follows the field: every "this tender's PM" rule reads
+        ``project_manager``, so the new PM gains it and the old one loses it at once.
+        """
         if user is None or not user.is_active or user.role != Role.EXECUTIVE:
             raise PermissionDenied("Only the Managing Director can reassign a tender (R13).")
         if not new_pm.is_active or new_pm.role != Role.PROJECT_MANAGER:
