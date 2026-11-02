@@ -14,7 +14,7 @@ from django.db import transaction
 from django.test import TestCase
 from django.utils import timezone
 
-from items.models import AttachmentKind, Item, ItemAttachment, Quote, SupplierSuggestion
+from items.models import AttachmentKind, Item, ItemAttachment, SupplierSuggestion
 from tenders.models import TenderStatus as S, TransitionError, WORK_ALLOWED_STATUSES
 
 from .helpers import D, ItemFixtures, force_status
@@ -49,7 +49,7 @@ class ItemWorkByTenderStateTests(ItemFixtures, TestCase):
         tender = self.drafting()
         item = self.make_item(tender)
         attachment = self.attach(item, AttachmentKind.BROCHURE)
-        quote = Quote.objects.create(item=item, supplier=self.supplier, unit_price=D("10"), currency="USD")
+        quote = self.quote(item, quoted_unit_price=D("10"))
         suggestion = SupplierSuggestion(
             tender=tender, scope="SEPARATE_PART", suggested_name="Hettich", rationale="Makes it.",
             source_urls=["https://example.com/hettich"], requested_by=self.pm,
@@ -80,8 +80,9 @@ class ItemWorkByTenderStateTests(ItemFixtures, TestCase):
             "delete item": lambda: Item.objects.get(pk=self.spare.pk).delete(),
             "add attachment": lambda: self.attach(item, AttachmentKind.DATASHEET),
             "delete attachment": lambda: attachment.delete(),
-            "add quote": lambda: Quote.objects.create(item=item, supplier=self.supplier, unit_price=D("9"), currency="USD"),
-            "apply quote": lambda: quote.apply_to_item(),
+            "add quote": lambda: self.quote(item, quoted_unit_price=D("9")),
+            "select quote": lambda: quote.select(self.pm),
+            "reject quote": lambda: quote.reject(self.pm),
             "delete quote": lambda: quote.delete(),
             "new suggestion": new_suggestion,
             "accept suggestion": lambda: suggestion.accept(self.pm),
@@ -97,7 +98,7 @@ class ItemWorkByTenderStateTests(ItemFixtures, TestCase):
                 item.specification = "Edited"
                 item.save()
                 self.attach(item, AttachmentKind.BROCHURE)
-                Quote.objects.create(item=item, supplier=self.supplier, unit_price=D("10"), currency="USD")
+                self.quote(item, quoted_unit_price=D("10")).select(self.pm)
 
     def test_r15_r4_refused_in_every_other_state(self):
         _, refused = work_allowed_pairs()

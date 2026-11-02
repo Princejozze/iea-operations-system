@@ -6,7 +6,7 @@ methods (§4). Saving here still passes through Item.save(), so R15 and R9a hold
 
 from django.contrib import admin
 
-from .models import ExchangeRate, Item, ItemAttachment, Quote, SupplierSuggestion
+from .models import RFQ, ExchangeRate, Item, ItemAttachment, Quote, SupplierSuggestion
 
 
 class ItemAttachmentInline(admin.TabularInline):
@@ -39,17 +39,8 @@ class ExchangeRateAdmin(admin.ModelAdmin):
     list_filter = ("currency",)
 
 
-@admin.register(Quote)
-class QuoteAdmin(admin.ModelAdmin):
-    list_display = ("item", "supplier", "unit_price", "currency", "incoterm", "received_at")
-
-
-@admin.register(SupplierSuggestion)
-class SupplierSuggestionAdmin(admin.ModelAdmin):
-    """Look, don't touch: suggestions are created by discovery and decided by the PM."""
-
-    list_display = ("tender", "suggested_name", "scope", "status", "confidence")
-    list_filter = ("status", "scope")
+class ReadOnlyAdmin(admin.ModelAdmin):
+    """Look, don't touch: these rows are written only through items.services."""
 
     def has_add_permission(self, request):
         return False
@@ -59,3 +50,25 @@ class SupplierSuggestionAdmin(admin.ModelAdmin):
 
     def has_delete_permission(self, request, obj=None):
         return False
+
+
+@admin.register(Quote)
+class QuoteAdmin(ReadOnlyAdmin):
+    """Quotes are entered with their original document (items.services.quotes) and
+    selected by the PM (Quote.select); the admin only shows them."""
+
+    list_display = ("item", "supplier", "quoted_unit_price", "currency", "incoterm", "status", "received_at")
+    list_filter = ("status", "currency")
+
+
+@admin.register(RFQ)
+class RFQAdmin(ReadOnlyAdmin):
+    list_display = ("tender", "supplier", "sent_at", "sent_by", "message_id")
+
+
+@admin.register(SupplierSuggestion)
+class SupplierSuggestionAdmin(ReadOnlyAdmin):
+    """Suggestions are created by discovery and decided by the PM."""
+
+    list_display = ("tender", "suggested_name", "scope", "status", "confidence")
+    list_filter = ("status", "scope")

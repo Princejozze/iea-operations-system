@@ -16,3 +16,6 @@ pymupdf==1.28.2
 
 # Gemini extraction (CLAUDE.md §4). Unified Google Gen AI SDK, NOT the superseded google-generativeai.
 google-genai==2.34.0
+
+# xlsx round-trip for bulk quote entry (CLAUDE.md §7 "Entry at scale"), items.services.quote_sheet.
+openpyxl==3.1.5

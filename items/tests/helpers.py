@@ -68,3 +68,14 @@ class ItemFixtures(TenderFixtures):
             item=item, kind=kind, uploaded_by=self.pm, original_filename=f"{kind.lower()}.pdf",
             file=ContentFile(b"%PDF-1.4", name=f"{kind.lower()}.pdf"),
         )
+
+    def quote(self, item, *, user=None, document=b"%PDF-1.4 supplier quotation", **figures):
+        """A RECEIVED quote entered the real way: original document plus figures."""
+        from items.services.quotes import enter_quote
+
+        figures.setdefault("supplier", self.supplier)
+        figures.setdefault("quoted_unit_price", D("1500.00"))
+        figures.setdefault("currency", Currency.USD)
+        return enter_quote(
+            item, user=user or self.pm, original_document=ContentFile(document, name="quotation.pdf"), **figures
+        )

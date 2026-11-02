@@ -1,10 +1,10 @@
 """
 items — app 6 in CLAUDE.md §1.
 
-Holds: Item, ItemAttachment, Quote, SupplierSuggestion, ExchangeRate, the
-costing chain (``items.costing``, §4), currency conversion, bulk specification
-import, RFQ dispatch and chasing. (Bulk import, AI discovery and RFQs are
-later work; the models they need are here.)
+Holds: Item, ItemAttachment, Quote, SupplierSuggestion, ExchangeRate, RFQ, the
+costing chain (``items.costing``, §4), currency conversion, quote entry and the
+xlsx round-trip (``items.services``), RFQ dispatch (``items.services.rfq``).
+Bulk specification import, AI discovery and supplier chasing are later work.
 
 May import from: core, accounts, documents, suppliers, tenders. Never from apps below it.
 Every model holding business data inherits core.models.Auditable (R7).
@@ -29,6 +29,16 @@ Rules enforced here
        the same call starts with ``Tender.require_unfrozen()``.
   R4   rates float while the tender is in COSTING; once the tender holds a rate
        lock no item can change (it is no longer DRAFTING/COSTING).
+  R8   every RFQ row and every RFQ email carries sales@ in cc (documents.rfq).
+
+Quotes (§5 step 13, §7). A quote is the supplier's original document AND the
+typed figures; neither substitutes for the other. ``Quote.original_document`` is
+an ItemAttachment of kind QUOTATION on the same item, so the evidence also
+counts toward R2's three attachments. ``Quote.select()`` is the only writer of
+``Quote.status`` and ``Item.selected_quote``: it copies the quote's figures onto
+the item (QUOTE_TO_ITEM), the item re-costs, and the change is audited. While a
+quote is selected, Item.save() refuses item figures that disagree with it — a
+bid price must always be traceable to the document behind it.
 """
 
 from contextlib import contextmanager
@@ -46,6 +56,8 @@ from accounts.models import Role
 from core.audit import audit_actor
 from core.models import AuditBypassError, Auditable, AuditableQuerySet, CostingDefaults, CostingRates
 from core.references import next_item_reference
+from documents.models import Document
+from documents.rfq import SALES_CC, normalise_recipients, with_required_cc
 from suppliers.models import Supplier
 from tenders.models import (
     WORK_ALLOWED_STATUSES,
@@ -86,6 +98,12 @@ class AttachmentKind(models.TextChoices):
     BROCHURE = "BROCHURE", "Brochure"
     QUOTATION = "QUOTATION", "Quotation"
     DATASHEET = "DATASHEET", "Datasheet"
+
+
+class QuoteStatus(models.TextChoices):
+    RECEIVED = "RECEIVED", "Received"
+    SELECTED = "SELECTED", "Selected"
+    REJECTED = "REJECTED", "Rejected"
 
 
 class SuggestionStatus(models.TextChoices):
@@ -239,6 +257,10 @@ class Item(GuardedWrites, Auditable):
     country_of_origin = models.CharField(max_length=100, blank=True)
     supplier = models.ForeignKey(Supplier, on_delete=models.PROTECT, null=True, blank=True, related_name="+")
     sourcing_type = models.CharField(max_length=16, choices=SourcingType.choices, blank=True)
+    selected_quote = models.ForeignKey(
+        "Quote", on_delete=models.PROTECT, null=True, blank=True, related_name="+", editable=False,
+        help_text="The quote this item is costed on. Set only by Quote.select().",
+    )
     # `lot` (§7: "if set, must belong to the same Tender") arrives with tenders.Lot.
 
     # -- costing inputs (§4) -------------------------------------------------------
@@ -298,7 +320,24 @@ class Item(GuardedWrites, Auditable):
     cost_of_capital_rate = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True, editable=False)
 
     objects = ItemQuerySet.as_manager()
-    GUARDED_FIELDS = ("status", "item_reference")
+    GUARDED_FIELDS = ("status", "item_reference", "selected_quote")
+
+    # Quote field -> Item field, copied by Quote.select() (§5 step 13). The quoted
+    # price is both what the supplier charges (unit_cost) and the chain's import
+    # input (fob_unit_price, in `currency`; with shipping_applies False the chain
+    # adds no shipping, duty or C&F, so a local quote costs correctly too).
+    # local_unit_cost, risk_pct and labour hours stay the PM's own inputs.
+    QUOTE_TO_ITEM = (
+        ("supplier_id", "supplier_id"),
+        ("quoted_unit_price", "unit_cost"),
+        ("quoted_unit_price", "fob_unit_price"),
+        ("currency", "currency"),
+        ("incoterm", "incoterm"),
+        ("shipping_applies", "shipping_applies"),
+        ("country_of_origin", "country_of_origin"),
+        ("make_brand", "make_brand"),
+        ("model_part_number", "model_part_number"),
+    )
 
     RATE_FIELDS = (
         "shipping_rate", "duty_rate", "cnf_rate", "labour_rate_tzs_per_hour", "overhead_rate",
@@ -423,6 +462,36 @@ class Item(GuardedWrites, Auditable):
     def is_costed(self):
         return self.total_selling_price_tzs is not None
 
+    @property
+    def specification_offered(self):
+        """What the supplier committed to, from the selected quote ("" if none).
+        audits.QCAuditLine.specification_offered is prefilled from this (§5 step 13)."""
+        if self.selected_quote_id is None:
+            return ""
+        return Quote._base_manager.filter(pk=self.selected_quote_id).values_list(
+            "specification_offered", flat=True
+        ).first() or ""
+
+    def _selected_quote_errors(self):
+        """While a quote is selected, the copied figures must be the quote's."""
+        if self.selected_quote_id is None:
+            return {}
+        quote = Quote._base_manager.filter(pk=self.selected_quote_id).first()
+        if quote is None or quote.item_id != self.pk:
+            return {"selected_quote": "The selected quote must be a quote for this item."}
+        errors = {}
+        for quote_field, item_field in self.QUOTE_TO_ITEM:
+            mine, theirs = getattr(self, item_field), getattr(quote, quote_field)
+            if isinstance(theirs, Decimal):
+                mine = None if mine is None else _decimal(mine)
+            if mine != theirs:
+                name = item_field.removesuffix("_id")
+                errors[name] = (
+                    f"This item is costed on the selected quote ({theirs!s} there). "
+                    "Enter and select a new quote to change it."
+                )
+        return errors
+
     def _clear_costing(self):
         for field in (*self.BREAKDOWN_FIELDS.values(), *self.RATE_FIELDS, "fx_rate", "fx_rate_as_of", "rates_snapshot_at"):
             setattr(self, field, None)
@@ -488,6 +557,10 @@ class Item(GuardedWrites, Auditable):
                 if stored and (stored["tender_id"] != self.tender_id or stored["item_reference"] != self.item_reference):
                     raise GuardedFieldError({"tender": "An item never moves between tenders or changes reference."})
             errors = self._invariant_errors()
+            if not adding:
+                errors.update(self._selected_quote_errors())
+            elif self.selected_quote_id is not None:
+                errors["selected_quote"] = "A new item has no quotes to select yet."
             if errors:
                 raise ValidationError(errors)
             if adding:
@@ -555,51 +628,265 @@ def _guard_attachment_delete(sender, instance, **kwargs):
 # ---------------------------------------------------------------------------
 
 
-class Quote(Auditable):
-    """A supplier's price for an item. ``apply_to_item`` copies the chosen quote
-    onto the item as its supplier, unit_cost, currency and incoterm."""
+class QuoteQuerySet(AuditableQuerySet):
+    def bulk_create(self, objs, *args, **kwargs):
+        raise AuditBypassError(
+            "Quote.objects.bulk_create() would skip the evidence, PM and R15/R9a checks in "
+            "Quote.save(). Use items.services.quotes.enter_quote()."
+        )
+
+
+class Quote(GuardedWrites, Auditable):
+    """
+    What a supplier actually offered for an item (§5 step 13, §7).
+
+    Both halves are mandatory: ``original_document`` is the supplier's quotation
+    exactly as sent (the evidence), and the typed figures are what the costing
+    chain runs on. Enter one through ``items.services.quotes.enter_quote`` (or
+    the xlsx import), which stores the document and the figures together.
+
+    The figures can be corrected while the quote is RECEIVED. Once SELECTED or
+    REJECTED they are a record: enter a new quote instead.
+    """
 
     item = models.ForeignKey(Item, on_delete=models.PROTECT, related_name="quotes")
     supplier = models.ForeignKey(Supplier, on_delete=models.PROTECT, related_name="+")
-    unit_price = models.DecimalField(max_digits=18, decimal_places=4)
+    original_document = models.OneToOneField(
+        ItemAttachment, on_delete=models.PROTECT, related_name="quote",
+        help_text="The supplier's quotation as sent: a QUOTATION attachment of the same item.",
+    )
+    quoted_unit_price = models.DecimalField(max_digits=18, decimal_places=4)
     currency = models.CharField(max_length=3, choices=Currency.choices)
     incoterm = models.CharField(max_length=3, choices=Incoterm.choices, default=Incoterm.CIF)
+    shipping_applies = models.BooleanField(default=True, help_text="Imported (True) vs locally sourced (False).")
+    country_of_origin = models.CharField(max_length=100, blank=True)
+    make_brand = models.CharField(max_length=255, blank=True)
+    model_part_number = models.CharField(max_length=255, blank=True)
+    specification_offered = models.TextField(
+        blank=True, help_text="What the supplier commits to. Flows into the QC audit line."
+    )
     lead_time_days = models.PositiveIntegerField(null=True, blank=True)
     valid_until = models.DateField(null=True, blank=True)
-    received_at = models.DateTimeField(default=timezone.now)
     notes = models.TextField(blank=True)
+    received_at = models.DateTimeField(default=timezone.now)
+    entered_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="+")
+    status = models.CharField(
+        max_length=16, choices=QuoteStatus.choices, default=QuoteStatus.RECEIVED, editable=False
+    )
+
+    objects = QuoteQuerySet.as_manager()
+    GUARDED_FIELDS = ("status",)
+    # Fixed once the quote is SELECTED or REJECTED (notes stay editable).
+    FIGURE_FIELDS = (
+        "item_id", "supplier_id", "original_document_id", "quoted_unit_price", "currency", "incoterm",
+        "shipping_applies", "country_of_origin", "make_brand", "model_part_number",
+        "specification_offered", "lead_time_days", "valid_until", "received_at", "entered_by_id",
+    )
 
     class Meta:
-        ordering = ["item_id", "unit_price", "id"]
+        ordering = ["item_id", "quoted_unit_price", "id"]
         constraints = [
-            models.CheckConstraint(condition=Q(unit_price__gte=0), name="items_quote_unit_price_non_negative"),
+            models.CheckConstraint(condition=Q(quoted_unit_price__gte=0), name="items_quote_unit_price_non_negative"),
             models.CheckConstraint(condition=Q(currency__in=Currency.values), name="items_quote_currency_valid"),
             models.CheckConstraint(condition=Q(incoterm__in=Incoterm.values), name="items_quote_incoterm_valid"),
+            models.CheckConstraint(condition=Q(status__in=QuoteStatus.values), name="items_quote_status_valid"),
+            # §7: an item may hold several quotes; exactly one may be SELECTED.
+            models.UniqueConstraint(
+                fields=["item"], condition=Q(status=QuoteStatus.SELECTED), name="items_quote_one_selected_per_item"
+            ),
         ]
 
     def __str__(self):
-        return f"{self.item.item_reference}: {self.supplier} {self.unit_price} {self.currency} {self.incoterm}"
+        return f"{self.item.item_reference}: {self.supplier} {self.quoted_unit_price} {self.currency} {self.incoterm}"
+
+    # -- validation ---------------------------------------------------------------
+
+    def _invariant_errors(self):
+        errors = {}
+        if self.quoted_unit_price is None:
+            errors["quoted_unit_price"] = "Enter the quoted unit price."
+        elif _decimal(self.quoted_unit_price) < 0:
+            errors["quoted_unit_price"] = "Cannot be negative."
+        if self.currency not in Currency.values:
+            errors["currency"] = "Choose the currency the supplier quoted in."
+        if self.incoterm not in Incoterm.values:
+            errors["incoterm"] = "Unknown Incoterm."
+        if self.supplier_id is None:
+            errors["supplier"] = "Which supplier sent this quote?"
+        if self.original_document_id is None:
+            errors["original_document"] = "Attach the supplier's quotation exactly as they sent it."
+        else:
+            document = (
+                ItemAttachment._base_manager.filter(pk=self.original_document_id).values("item_id", "kind").first()
+            )
+            if (
+                document is None
+                or document["kind"] != AttachmentKind.QUOTATION
+                or document["item_id"] != self.item_id
+            ):
+                errors["original_document"] = "The original document must be a QUOTATION attachment of this item."
+        return errors
+
+    def clean(self):
+        super().clean()
+        errors = self._invariant_errors()
+        if errors:
+            raise ValidationError(errors)
 
     def save(self, *args, **kwargs):
+        kwargs.pop("update_fields", None)
+        self._check_guard()
         with transaction.atomic():
-            assert_item_work_allowed(self.item.tender, "Saving a quote")
-            if _decimal(self.unit_price) < 0:
-                raise ValidationError({"unit_price": "Cannot be negative."})
+            item = Item._base_manager.select_related("tender").get(pk=self.item_id)
+            assert_item_work_allowed(item.tender, "Saving a quote")
+            errors = self._invariant_errors()
+            if self._state.adding:
+                if not _is_tenders_pm(self.entered_by, item.tender):
+                    errors["entered_by"] = "Only this tender's Project Manager enters its quotes."
+            else:
+                stored = type(self)._base_manager.filter(pk=self.pk).values("status", *self.FIGURE_FIELDS).first()
+                if stored and (
+                    stored["item_id"] != self.item_id or stored["original_document_id"] != self.original_document_id
+                ):
+                    errors["item"] = "A quote never moves to another item or document."
+                elif stored and stored["status"] != QuoteStatus.RECEIVED:
+                    if any(stored[f] != getattr(self, f) for f in self.FIGURE_FIELDS):
+                        raise ValidationError(
+                            f"This quote is {stored['status']}; its figures are a record. "
+                            "Enter a new quote instead.",
+                            code="quote_locked",
+                        )
+            if errors:
+                raise ValidationError(errors)
             super().save(*args, **kwargs)
 
-    def apply_to_item(self):
-        """Make this the quote the item is costed on. The item then reprices as usual (R10)."""
-        item = Item.objects.get(pk=self.item_id)
-        item.supplier, item.unit_cost, item.currency, item.incoterm = (
-            self.supplier, self.unit_price, self.currency, self.incoterm,
-        )
-        item.save()
+    # -- the PM's decision ------------------------------------------------------------
+
+    def select(self, user):
+        """
+        Make this the quote the item is costed on (§5 step 13). In one transaction:
+        any previously selected quote goes back to RECEIVED, this one becomes
+        SELECTED, its figures are copied onto the item, ``Item.selected_quote``
+        points here, and the item re-costs (R10). Every changed row writes an
+        AuditEntry attributed to ``user``. Returns the item.
+        """
+        tender = Item._base_manager.select_related("tender").get(pk=self.item_id).tender
+        if not _is_tenders_pm(user, tender):
+            raise PermissionDenied("Only this tender's PM selects the quote an item is costed on.")
+        with transaction.atomic(), audit_actor(user):
+            item = Item.objects.select_for_update().get(pk=self.item_id)
+            assert_item_work_allowed(item.tender, "Selecting a quote")
+            quote = type(self).objects.select_for_update().get(pk=self.pk)
+            if quote.status == QuoteStatus.REJECTED:
+                raise TransitionError("A rejected quote cannot be selected.", code="quote")
+            if quote.status != QuoteStatus.SELECTED:
+                for previous in type(self).objects.select_for_update().filter(
+                    item_id=item.pk, status=QuoteStatus.SELECTED
+                ):
+                    previous.status = QuoteStatus.RECEIVED
+                    with previous._system_write():
+                        previous.save()
+                quote.status = QuoteStatus.SELECTED
+                with quote._system_write():
+                    quote.save()
+            for quote_field, item_field in Item.QUOTE_TO_ITEM:
+                setattr(item, item_field, getattr(quote, quote_field))
+            item.selected_quote = quote
+            with item._system_write():
+                item.save()
+        self.refresh_from_db()
         return item
+
+    def reject(self, user):
+        """Set a RECEIVED quote aside. The selected one cannot be rejected: select another first."""
+        tender = Item._base_manager.select_related("tender").get(pk=self.item_id).tender
+        if not _is_tenders_pm(user, tender):
+            raise PermissionDenied("Only this tender's PM rejects a quote.")
+        with transaction.atomic(), audit_actor(user):
+            assert_item_work_allowed(tender, "Rejecting a quote")
+            quote = type(self).objects.select_for_update().get(pk=self.pk)
+            if quote.status == QuoteStatus.SELECTED:
+                raise TransitionError(
+                    "The item is costed on this quote. Select another quote before rejecting it.", code="quote"
+                )
+            if quote.status == QuoteStatus.REJECTED:
+                raise TransitionError("This quote is already rejected.", code="quote")
+            quote.status = QuoteStatus.REJECTED
+            with quote._system_write():
+                quote.save()
+        self.refresh_from_db()
 
 
 @receiver(pre_delete, sender=Quote, dispatch_uid="items.guard_quote_delete")
 def _guard_quote_delete(sender, instance, **kwargs):
     assert_item_work_allowed(instance.item.tender, "Deleting a quote")
+    if sender._base_manager.filter(pk=instance.pk, status=QuoteStatus.SELECTED).exists():
+        raise ValidationError("The item is costed on this quote; it cannot be deleted.")
+
+
+# ---------------------------------------------------------------------------
+# RFQ — a request for quotation as sent (§5 step 12, R8)
+# ---------------------------------------------------------------------------
+
+
+class RFQ(Auditable):
+    """
+    One RFQ email as sent to one supplier: which items it asked about, the
+    registered ``documents.Document`` it was rendered from, the exact recipients
+    and the Message-ID that links replies and reminders back to the tender (§10).
+    Created only by ``items.services.rfq.send_rfq``. ``cc`` always holds the
+    sales mailbox (R8): added in clean() and save(), and a database constraint.
+    """
+
+    tender = models.ForeignKey(Tender, on_delete=models.PROTECT, related_name="rfqs")
+    supplier = models.ForeignKey(Supplier, on_delete=models.PROTECT, related_name="+")
+    items = models.ManyToManyField(Item, related_name="rfqs")
+    document = models.ForeignKey(Document, on_delete=models.PROTECT, related_name="+")
+    to = models.JSONField(default=list)
+    cc = models.JSONField(default=list)
+    message_id = models.CharField(max_length=255, unique=True)
+    reply_by = models.DateField(null=True, blank=True)
+    sent_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="+")
+    sent_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        ordering = ["-sent_at", "-id"]
+        verbose_name = "RFQ"
+        verbose_name_plural = "RFQs"
+        constraints = [
+            # R8, last line of defence (stored lower-case, see documents.rfq).
+            models.CheckConstraint(condition=Q(cc__contains=[SALES_CC]), name="items_rfq_cc_sales"),
+            models.CheckConstraint(condition=~Q(to=[]), name="items_rfq_has_recipient"),
+        ]
+
+    def __str__(self):
+        return f"RFQ {self.tender.reference} to {self.supplier}"
+
+    def _normalise_recipients(self):
+        self.to = normalise_recipients(self.to)
+        self.cc = with_required_cc(self.cc)  # R8: the system adds it; nothing removes it
+        if not self.to:
+            raise ValidationError({"to": "An RFQ needs a recipient."})
+
+    def clean(self):
+        super().clean()
+        self._normalise_recipients()
+
+    def save(self, *args, **kwargs):
+        self._normalise_recipients()
+        super().save(*args, **kwargs)
+
+
+@receiver(m2m_changed, sender=RFQ.items.through, dispatch_uid="items.guard_rfq_items")
+def _guard_rfq_items(sender, instance, action, reverse, pk_set, **kwargs):
+    """An RFQ covers items of its own tender only."""
+    if action not in ("pre_add", "pre_remove", "pre_clear"):
+        return
+    if reverse:
+        raise ValidationError("Link items from the RFQ: rfq.items.add(...).")
+    if action == "pre_add" and pk_set:
+        if Item._base_manager.filter(pk__in=pk_set).exclude(tender_id=instance.tender_id).exists():
+            raise ValidationError("An RFQ can cover only items of its own tender.")
 
 
 # ---------------------------------------------------------------------------

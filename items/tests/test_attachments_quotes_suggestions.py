@@ -7,7 +7,7 @@ from django.test import SimpleTestCase, TestCase
 
 from core.models import AuditAction, AuditBypassError, AuditEntry
 from items.models import (
-    AttachmentKind, Item, ItemAttachment, Quote, SuggestionStatus as SS, SupplierSuggestion,
+    AttachmentKind, Item, ItemAttachment, SuggestionStatus as SS, SupplierSuggestion,
 )
 from suppliers.models import Supplier
 from tenders.models import GuardedFieldError, TransitionError
@@ -53,52 +53,6 @@ class AttachmentTests(ItemFixtures, TestCase):
         with self.assertRaises(Exception) as ctx, transaction.atomic():
             item.delete()
         self.assertEqual(type(ctx.exception).__name__, "ProtectedError")
-
-
-class QuoteTests(ItemFixtures, TestCase):
-    def quote(self, item, **fields):
-        fields.setdefault("supplier", self.supplier)
-        fields.setdefault("unit_price", D("1500.00"))
-        fields.setdefault("currency", "USD")
-        return Quote.objects.create(item=item, **fields)
-
-    def test_a_supplier_quote_is_recorded_against_an_item(self):
-        item = self.make_item()
-        quote = self.quote(item, incoterm="FOB", lead_time_days=45)
-        self.assertEqual(quote.incoterm, "FOB")
-        self.assertEqual(list(item.quotes.all()), [quote])
-        self.assertEqual(quote.supplier, self.supplier)
-
-    def test_incoterm_defaults_to_cif(self):
-        self.assertEqual(self.quote(self.make_item()).incoterm, "CIF")
-
-    def test_bad_quotes_are_refused(self):
-        item = self.make_item()
-        with self.assertRaises(ValidationError):
-            self.quote(item, unit_price=D("-1"))
-        for fields in ({"currency": "XYZ"}, {"incoterm": "DDP"}):
-            with self.subTest(**fields), self.assertRaises(IntegrityError), transaction.atomic():
-                self.quote(item, **fields)
-
-    def test_applying_a_quote_makes_it_what_the_item_is_costed_on(self):
-        item = self.make_item(quantity=4)
-        quote = self.quote(item, unit_price=D("1500.00"), incoterm="FOB")
-        item = quote.apply_to_item()
-        self.assertEqual(
-            (item.supplier, item.unit_cost, item.currency, item.incoterm),
-            (self.supplier, D("1500.00"), "USD", "FOB"),
-        )
-        self.assertEqual(item.total_cost, D("6000.0000"))  # unit_cost x quantity (R10: computed)
-
-    def test_applying_a_quote_does_not_touch_the_costing_inputs(self):
-        # unit_cost is what the supplier charges; the chain runs on FOB price / local cost (§4).
-        item = self.priced_item()
-        before = item.total_selling_price_tzs
-        quote = self.quote(item, unit_price=D("99999"))
-        quote.apply_to_item()
-        item.refresh_from_db()
-        self.assertEqual(item.total_selling_price_tzs, before)
-        self.assertEqual(item.unit_cost, D("99999"))
 
 
 def suggestion_fields(case, tender, **over):
