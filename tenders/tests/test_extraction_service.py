@@ -17,7 +17,7 @@ from tenders.pipeline.extractor import (
 )
 from tenders.pipeline.sections import Group as G
 
-from .helpers import TenderFixtures, confirmed_fields, force_status, status_entries
+from .helpers import TenderFixtures, backdate_updated_at, confirmed_fields, force_status, status_entries
 from .pipeline_helpers import (
     GASCO, CachedConverter, FakeExtractor, StaticConverter, field, fixture_bytes, good_answer, listing,
     mini_tender_pages, requires_fixtures, scanned_pdf,
@@ -342,7 +342,9 @@ class ClaimsAndConcurrency(ExtractionCase):
         fake = FakeExtractor(good_answer())
         self.assertEqual(service.extract_fields(tender, fake).outcome, X.READING)
         self.assertEqual(fake.calls, 0)
-        service.extract_fields(tender, fake, stale_after=datetime.timedelta(0))
+        # Backdate the claim: Windows clock ticks are ~15.6ms, so a zero threshold is flaky.
+        backdate_updated_at(ext)
+        service.extract_fields(tender, fake)
         self.assertEqual(fake.calls, 1)
         tender.refresh_from_db()
         self.assertEqual(tender.extraction.outcome, X.EXTRACTED)

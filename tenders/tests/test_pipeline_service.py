@@ -24,7 +24,7 @@ from tenders.pipeline.converter import PyMuPDF4LLMConverter
 from tenders.pipeline.sections import Group as G
 from tenders.pipeline.tables import render_markdown, split_pages
 
-from .helpers import TenderFixtures, confirmed_fields, force_status, status_entries
+from .helpers import TenderFixtures, backdate_updated_at, confirmed_fields, force_status, status_entries
 from .pipeline_helpers import (
     GASCO, SAMPLE, TANAPA, CachedConverter, FailingConverter, StaticConverter, blank_pdf, encrypted_pdf,
     fixture_bytes, mini_tender_pages, requires_fixtures, scanned_pdf, text_pdf,
@@ -116,9 +116,11 @@ class PrepareHealthyTests(PipelineCase):
 
     def test_a_claim_left_by_a_crashed_worker_is_taken_over(self):
         tender = self.upload()
-        TenderExtraction.objects.create(tender=tender)
+        claim = TenderExtraction.objects.create(tender=tender)
+        # Backdate the claim: Windows clock ticks are ~15.6ms, so a zero threshold is flaky.
+        backdate_updated_at(claim)
         converter = StaticConverter(mini_tender_pages())
-        result = service.prepare_extraction(tender, converter=converter, stale_after=datetime.timedelta(0))
+        result = service.prepare_extraction(tender, converter=converter)
         self.assertEqual((result.outcome, converter.calls), (X.PREPARED, 1))
 
     def test_only_a_tender_in_extracting_can_be_prepared(self):

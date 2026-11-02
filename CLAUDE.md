@@ -44,6 +44,10 @@ Several sessions work in this tree at once, in different app directories.
 - Commit before handing back, so each stream's work is one reviewable diff.
 - If a path you need is already modified and is not yours, stop and say so
   rather than committing it or reverting it.
+- **Who owns which files when sessions run in parallel.** The UI stream owns
+  `templates/`, `static/`, `views.py`, `urls.py` and `forms.py`. Backend streams own
+  `models.py`, `services/`, `management/` and `migrations/`. Do not edit the other
+  stream's files; if you need a change there, say so instead.
 
 ### Application structure
 

@@ -75,9 +75,11 @@ def _tender_pdf(tender):
     return tender.documents.filter(kind=TenderDocumentKind.TENDER_PDF).order_by("-created_at", "-id").first()
 
 
-def _claim(tender, stale_after):
+def _claim(tender, stale_after=None):
     """Take the tender for processing. Returns (extraction, claimed). Two cron runs overlapping
     cannot both claim it: the tender row is locked and TenderExtraction is one row per tender."""
+    if stale_after is None:
+        stale_after = STALE_AFTER  # looked up per call, so tests and ops can patch it
     with transaction.atomic(), audit_actor(None):
         locked = Tender.objects.select_for_update().get(pk=tender.pk)
         if locked.status != TenderStatus.EXTRACTING:
@@ -114,7 +116,7 @@ def _finish(tender, extraction, *, outcome, message="", converter="", plan=None,
     return extraction
 
 
-def prepare_extraction(tender, *, converter=None, stale_after=STALE_AFTER):
+def prepare_extraction(tender, *, converter=None, stale_after=None):
     """
     Convert the tender's PDF and decide how it will be read. Idempotent: a tender that already
     has a result, or is being processed, is returned untouched.
@@ -252,6 +254,8 @@ def _claim_reading(tender, stale_after):
     """Take the tender for the model call. Returns (extraction, claimed). The call costs money, so
     two overlapping cron runs must never both make it: the tender row is locked while the claim
     is written, and only a PREPARED (or stale READING) extraction can be claimed."""
+    if stale_after is None:
+        stale_after = STALE_AFTER  # looked up per call, so tests and ops can patch it
     with transaction.atomic(), audit_actor(None):
         locked = Tender.objects.select_for_update().get(pk=tender.pk)
         if locked.status != TenderStatus.EXTRACTING:
@@ -309,7 +313,7 @@ def _record(tender, extraction, *, outcome, message="", fields=None, raw_output=
     return current
 
 
-def extract_fields(tender, extractor, *, stale_after=STALE_AFTER):
+def extract_fields(tender, extractor, *, stale_after=None):
     """
     Ask the model what the prepared tender says, and store the answer for the PM to verify.
 
@@ -353,7 +357,7 @@ def extract_fields(tender, extractor, *, stale_after=STALE_AFTER):
                    raw_output=raw.raw_text, usage=raw.usage, model_name=raw.model or extractor.name)
 
 
-def process_tender(tender, *, converter=None, extractor=None, stale_after=STALE_AFTER):
+def process_tender(tender, *, converter=None, extractor=None, stale_after=None):
     """What the cron command runs per tender: convert and section it, then ask the model.
     Safe to call twice, or from two processes at once: each stage is claimed before it starts."""
     extraction = prepare_extraction(tender, converter=converter, stale_after=stale_after)

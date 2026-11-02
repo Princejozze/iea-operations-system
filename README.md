@@ -162,9 +162,10 @@ Every variable the code reads:
 | `AWS_S3_REGION_NAME` | optional | Default `af-south-1`. |
 | `GEMINI_API_KEY`, `GEMINI_MODEL` | only for extraction | Used by `extract_tenders` (step 8). No model name is hardcoded: pick a current Flash-tier model from Google's documentation. Without them the command exits with an instruction. |
 | `EXCHANGE_RATE_API_KEY` | currently unused | Reserved. Nothing reads it yet; exchange rates are entered in the admin (step 8). |
+| `MEDIA_ROOT` | **required when `USE_S3=False`** | A directory **outside the repository**, e.g. `C:/Users/you/iea-media`. Tender PDFs carry bid pricing, so startup refuses an unset value or a path inside the repo. |
 | `RUN_GEMINI_TESTS` | tests only | Set to `1` (with the two Gemini variables) to run the one opt-in test that makes a real, **billed** API call. Not an `.env` setting. |
 
-Minimal development `.env`: set `SECRET_KEY` and `DATABASE_URL`, leave the rest as shipped.
+Minimal development `.env`: set `SECRET_KEY`, `DATABASE_URL` and `MEDIA_ROOT`, leave the rest as shipped.
 
 > **Where uploads go in development.** `MEDIA_ROOT` is not set, so with `USE_S3=False`
 > uploaded files are written **inside the repository folder**: `tender_documents\`,

@@ -4,6 +4,7 @@ runs, and never leaves a tender trapped. No API calls: the extractor is a fake.
 """
 
 import os
+from datetime import timedelta
 from io import StringIO
 from unittest import mock
 
@@ -15,7 +16,7 @@ from tenders.models import ExtractionOutcome as X, Tender, TenderExtraction, Ten
 from tenders.pipeline import service
 from tenders.pipeline.extractor import ExtractionConfigError
 
-from .helpers import TenderFixtures, force_status
+from .helpers import TenderFixtures, backdate_updated_at, force_status
 from .pipeline_helpers import FakeExtractor, StaticConverter, good_answer, mini_tender_pages
 
 PDF = b"%PDF-1.4 placeholder bytes: the StaticConverter never reads them"
@@ -129,10 +130,12 @@ class OverlappingRuns(CommandCase):
 
     def test_a_claim_left_by_a_crashed_run_is_picked_up_once_it_is_stale(self):
         tender = self.upload()
-        TenderExtraction.objects.create(tender=tender)  # PROCESSING, "crashed"
+        claim = TenderExtraction.objects.create(tender=tender)  # PROCESSING, "crashed"
         _, _, fake = self.run_command()
         self.assertEqual(fake.calls, 0)  # fresh claim: someone may still be on it
-        with mock.patch.object(service, "STALE_AFTER", __import__("datetime").timedelta(0)):
+        # Backdate the claim rather than relying on the clock advancing (Windows ticks ~15.6ms).
+        backdate_updated_at(claim)
+        with mock.patch.object(service, "STALE_AFTER", timedelta(minutes=5)):
             _, _, fake = self.run_command()
         self.assertEqual((fake.calls, self.status(tender)), (1, S.PENDING_VERIFICATION))
 

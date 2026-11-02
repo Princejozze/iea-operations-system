@@ -154,6 +154,23 @@ if USE_S3:
     _default_storage = {"BACKEND": "storages.backends.s3boto3.S3Boto3Storage"}
 else:
     _default_storage = {"BACKEND": "django.core.files.storage.FileSystemStorage"}
+    # Local uploads (tender PDFs carry bid pricing) must never land inside the working tree,
+    # where a stray `git add` would stage them. MEDIA_ROOT has no default for that reason, and a
+    # path inside the repository is refused. Not needed under S3, or in tests (in-memory storage).
+    if "test" not in sys.argv:
+        _media = env("MEDIA_ROOT", default="").strip()
+        if not _media:
+            raise ImproperlyConfigured(
+                "MEDIA_ROOT is not set. With USE_S3=False, set MEDIA_ROOT in the environment or "
+                "in .env to a directory OUTSIDE the repository, e.g. C:/Users/you/iea-media "
+                "(tender documents carry bid pricing and must not sit in the working tree)."
+            )
+        MEDIA_ROOT = Path(_media).expanduser().resolve()
+        if MEDIA_ROOT == BASE_DIR or BASE_DIR in MEDIA_ROOT.parents:
+            raise ImproperlyConfigured(
+                f"MEDIA_ROOT ({MEDIA_ROOT}) is inside the repository ({BASE_DIR}). "
+                "Choose a path outside it."
+            )
 
 STORAGES = {
     "default": _default_storage,

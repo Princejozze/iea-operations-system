@@ -1,6 +1,7 @@
 import datetime
 
 from django.apps import apps
+from django.db import connection
 from django.utils import timezone
 
 from accounts.models import Role, User
@@ -41,6 +42,18 @@ def force_status(tender, status, **fields):
         tender.save()
     tender.refresh_from_db()
     return tender
+
+
+def backdate_updated_at(instance, *, hours=1):
+    """TEST-ONLY: move ``updated_at`` into the past so staleness checks do not depend on the
+    clock advancing (Windows ticks ~15.6ms, so a zero threshold is flaky). Raw SQL because
+    queryset.update() is refused on audited models (R7); updated_at is excluded from the trail."""
+    table = instance._meta.db_table
+    with connection.cursor() as cur:
+        cur.execute(
+            f'UPDATE "{table}" SET updated_at = %s WHERE id = %s',
+            [timezone.now() - datetime.timedelta(hours=hours), instance.pk],
+        )
 
 
 def add_item(tender, **fields):

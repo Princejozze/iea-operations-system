@@ -10,3 +10,8 @@ staticfiles/
 # Scratch prototypes and real tender PDFs (large third-party documents): never committed.
 scratch/
 tenders/tests/fixtures/pdfs/
+
+# Uploaded media (tender PDFs carry bid pricing). MEDIA_ROOT must be outside the repo;
+# these entries are a backstop in case one is ever created inside it.
+media/
+MEDIA_ROOT/
