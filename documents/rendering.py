@@ -6,11 +6,15 @@ returns text and HTML. It touches no model, so it is usable from a management
 command, a view or a test with nothing in the database.
 """
 
+from collections.abc import Callable
 from dataclasses import dataclass
 
 from django.conf import settings
 from django.template.loader import render_to_string
 
+from .maf import validate_maf_context
+from .pdf import html_to_pdf
+from .resolution import validate_resolution_context
 from .rfq import SALES_CC, validate_rfq_context
 
 # Shown when settings.DOCUMENT_LETTERHEAD does not override it. Address and phone
@@ -32,33 +36,61 @@ def letterhead():
 @dataclass(frozen=True)
 class RenderedDocument:
     subject: str
-    text: str
+    text: str  # plain-text body; empty for kinds that are PDF-only
     html: str
     context: dict  # the validated, JSON-clean context actually rendered
 
 
-def _rfq(context):
-    context = validate_rfq_context(context)
-    # One line, always: a subject never carries a newline from user data.
-    subject = " ".join(f"Request for Quotation - {context['tender_reference']}".split())
-    page = {"letterhead": letterhead(), "doc": context, "title": subject}
-    return RenderedDocument(
-        subject=subject,
-        text=render_to_string("documents/rfq.txt", page),
-        html=render_to_string("documents/rfq.html", page),
-        context=context,
-    )
+@dataclass(frozen=True)
+class Kind:
+    """How one document kind renders. ``text_template`` is None for PDF-only kinds."""
+
+    validate: Callable[[dict], dict]
+    subject: str  # format string over the validated context
+    html_template: str
+    text_template: str | None = None
 
 
-# kind (the DocumentKind value, as a plain string) -> renderer
-RENDERERS = {"RFQ": _rfq}
+# kind (the DocumentKind value, as a plain string) -> how to render it
+KINDS = {
+    "RFQ": Kind(
+        validate_rfq_context,
+        "Request for Quotation - {tender_reference}",
+        "documents/rfq.html",
+        "documents/rfq.txt",
+    ),
+    "MAF": Kind(
+        validate_maf_context,
+        "Manufacturer's Authorisation Form - {tender_reference}",
+        "documents/maf.html",
+    ),
+    "BOARD_RESOLUTION": Kind(
+        validate_resolution_context,
+        "Board Resolution - {tender_reference}",
+        "documents/resolution.html",
+    ),
+}
 
 
 def render(kind, context):
     """Render ``context`` as document ``kind``. Raises ValidationError on a bad
     context and KeyError on a kind with no template."""
     try:
-        renderer = RENDERERS[str(kind)]
+        spec = KINDS[str(kind)]
     except KeyError:
         raise KeyError(f"No letterhead template for document kind {kind!r}.") from None
-    return renderer(context)
+    context = spec.validate(context)
+    # One line, always: a subject never carries a newline from user data.
+    subject = " ".join(spec.subject.format(**context).split())
+    page = {"letterhead": letterhead(), "doc": context, "title": subject}
+    return RenderedDocument(
+        subject=subject,
+        text=render_to_string(spec.text_template, page) if spec.text_template else "",
+        html=render_to_string(spec.html_template, page),
+        context=context,
+    )
+
+
+def render_pdf(kind, context):
+    """The kind rendered straight to PDF bytes."""
+    return html_to_pdf(render(kind, context).html)

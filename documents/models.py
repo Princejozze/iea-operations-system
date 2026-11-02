@@ -27,11 +27,13 @@ class DocumentKind(models.TextChoices):
     Local to this app, deliberately not shared with any domain app.
 
     Only kinds that have a template exist here. The rest of CLAUDE.md §10's list
-    (MAF, board resolutions, bid security request, ...) are added one at a time as
-    their templates are built — do not add a kind without its template.
+    (bid security request, bank letters, ...) are added one at a time as their
+    templates are built — do not add a kind without its template.
     """
 
     RFQ = "RFQ", "Request for Quotation"
+    MAF = "MAF", "Manufacturer's Authorisation Form"
+    BOARD_RESOLUTION = "BOARD_RESOLUTION", "Board Resolution"
 
 
 class Document(Auditable):
@@ -68,6 +70,12 @@ class Document(Auditable):
     subject = models.CharField(max_length=255, blank=True)
     body_text = models.TextField(blank=True)
     body_html = models.TextField(blank=True)
+    pdf = models.FileField(
+        upload_to="documents/%Y/%m/",
+        max_length=255,
+        blank=True,
+        help_text="The PDF exactly as generated (via STORAGES, so S3 in production).",
+    )
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.PROTECT,

@@ -1,0 +1,29 @@
+{% extends "documents/letterhead.html" %}
+{% block body %}
+  <h2>Resolution of the Board of Directors of {{ letterhead.company_name }}</h2>
+  {% if doc.company_registration_number %}<p>Company registration no.: {{ doc.company_registration_number }}</p>{% endif %}
+  <p>Passed by the Board on {{ doc.date|default:"______________________________" }}.</p>
+
+  <p>
+    <strong>WHEREAS</strong> <strong>{{ doc.procuring_entity }}</strong> has invited tenders under
+    Tender No. <strong>{{ doc.tender_reference }}</strong>{% if doc.tender_title %}, {{ doc.tender_title }}{% endif %}
+    (the &ldquo;Tender&rdquo;);
+  </p>
+  <p><strong>IT IS RESOLVED THAT:</strong></p>
+  <ol>
+    <li>The Company participates in the Tender.</li>
+    <li>
+      <strong>{{ doc.signatory_name }}</strong>, {{ doc.signatory_title }} of the Company, is authorised to sign
+      and submit the Company's bid and all documents related to the Tender, to negotiate, and to
+      sign any contract awarded to the Company under the Tender, in each case on behalf of the Company.
+    </li>
+  </ol>
+
+  <div class="signoff">
+    <p>Signed by the Directors:</p>
+    {% for director in doc.directors %}
+    <p class="sigline">Signature: ______________________________<br>
+      Name: {{ director.name }}{% if director.title %}, {{ director.title }}{% endif %}</p>
+    {% endfor %}
+  </div>
+{% endblock %}

@@ -87,7 +87,7 @@ class RenderRfqTests(SimpleTestCase):
 
     def test_unknown_kind_is_refused(self):
         with self.assertRaises(KeyError):
-            render("MAF", rfq_context())
+            render("NOPE", rfq_context())
 
 
 class ContextContractTests(SimpleTestCase):

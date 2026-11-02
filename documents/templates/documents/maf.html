@@ -1,0 +1,41 @@
+{% extends "documents/letterhead.html" %}
+{% block body %}
+  {% if doc.date %}<p>{{ doc.date }}</p>{% endif %}
+  <p>
+    To: <strong>{{ doc.procuring_entity }}</strong><br>
+    Tender No.: <strong>{{ doc.tender_reference }}</strong>{% if doc.tender_title %}<br>{{ doc.tender_title }}{% endif %}
+  </p>
+
+  <h2>Manufacturer's Authorisation Form</h2>
+
+  <p>
+    We, <strong>{{ doc.manufacturer_name }}</strong>{% if doc.manufacturer_address %}, of {{ doc.manufacturer_address }}{% endif %},
+    who are established and reputable manufacturers of the goods listed below, do hereby
+    authorise <strong>{{ doc.bidder_name|default:letterhead.company_name }}</strong> to submit a bid, and
+    subsequently to negotiate and sign the contract with you, against the above Tender for
+    the following goods manufactured by us:
+  </p>
+
+  <table class="items">
+    <thead><tr><th>No.</th><th>Goods</th><th>Model / part no.</th></tr></thead>
+    <tbody>
+      {% for row in doc.goods %}
+      <tr><td>{{ forloop.counter }}</td><td>{{ row.description|linebreaksbr }}</td><td>{{ row.model }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <p>
+    We hereby extend our full guarantee and warranty, as per the General Conditions of
+    Contract, with respect to the goods offered by the above firm.
+  </p>
+
+  <div class="signoff">
+    <p>Signed for and on behalf of <strong>{{ doc.manufacturer_name }}</strong>:</p>
+    <p class="sigline">Signature: ______________________________</p>
+    <p>Name: {{ doc.signatory_name|default:"______________________________" }}</p>
+    <p>Title: {{ doc.signatory_title|default:"______________________________" }}</p>
+    <p>Date: ______________________________</p>
+    <p>Company stamp:</p>
+  </div>
+{% endblock %}

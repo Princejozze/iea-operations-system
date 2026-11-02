@@ -1,0 +1,26 @@
+{% comment %}
+  ============================================================================
+  THE LETTERHEAD. This is the ONE file to edit when IEA's real branding arrives.
+  Every document kind (RFQ, MAF, board resolution, ...) pulls its header from
+  here via letterhead.html, so nothing else changes.
+
+  To swap in the real thing:
+    1. Replace the <div> below with the real header (logo, address,
+       registration line, ...). Company name / email / address / phone are in
+       `letterhead` (rendering.LETTERHEAD_DEFAULTS, override with
+       settings.DOCUMENT_LETTERHEAD).
+    2. Delete the placeholder-flag <p>. Tests require it to exist ONLY in this
+       file, and require its removal to be the single step that unmarks documents.
+
+  PDF note: documents are paginated by PyMuPDF Story, which supports a modest
+  CSS subset (borders, padding, tables, basic fonts). Images must be embedded as
+  data: URIs or loaded via an archive; keep this file self-contained (no CDN).
+  ============================================================================
+{% endcomment %}
+{# Inline styles on purpose: the PDF writer and email clients both ignore <style> blocks inside <body>. #}
+<div style="border-bottom: 2px solid #1a1a1a; padding-bottom: 10px; margin-bottom: 24px;">
+  <p class="placeholder-flag" style="background-color: #fff3cd; border: 1px solid #b58900; color: #7a5c00; font-size: 8pt; font-weight: bold; padding: 3px 6px; margin: 0 0 8px 0;">PLACEHOLDER LETTERHEAD - IEA branding not yet supplied. Replace templates/documents/_letterhead.html before sending externally.</p>
+  <h1 style="font-size: 18pt; margin: 0 0 4px 0;">{{ letterhead.company_name }}</h1>
+  {% if letterhead.address %}<p style="margin: 0; font-size: 9.5pt; color: #444;">{{ letterhead.address }}</p>{% endif %}
+  <p style="margin: 0; font-size: 9.5pt; color: #444;">{% if letterhead.phone %}Tel: {{ letterhead.phone }} &middot; {% endif %}{{ letterhead.email }}</p>
+</div>

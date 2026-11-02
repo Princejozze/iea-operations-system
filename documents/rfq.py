@@ -6,10 +6,10 @@ R8 (CLAUDE.md §9): RFQs must cc sales@imperialeastafrica.tz. The SOP voids an
 offer not copied there. The system adds it; the user cannot remove it.
 """
 
-import json
-
 from django.core.exceptions import ValidationError
 from django.core.validators import validate_email
+
+from .contracts import validate_context
 
 # R8. Stored and compared lower-case.
 SALES_CC = "sales@imperialeastafrica.tz"
@@ -51,20 +51,8 @@ def with_required_cc(cc):
 
 # -- context contract -------------------------------------------------------
 
-REQUIRED_KEYS = ("supplier_name", "tender_reference", "items", "sender_name")
+REQUIRED_KEYS = ("supplier_name", "tender_reference", "sender_name")
 REQUIRED_ITEM_KEYS = ("reference", "specification", "quantity")
-
-
-def _is_plain(value):
-    """True for exactly what json round-trips unchanged: no Decimal, date,
-    set, model instance or enum — those belong to the caller to flatten."""
-    if value is None or isinstance(value, (str, bool, int, float)):
-        return type(value) in (type(None), str, bool, int, float)
-    if isinstance(value, (list, tuple)):
-        return all(_is_plain(v) for v in value)
-    if isinstance(value, dict):
-        return all(isinstance(k, str) and _is_plain(v) for k, v in value.items())
-    return False
 
 
 def validate_rfq_context(context):
@@ -76,27 +64,6 @@ def validate_rfq_context(context):
     Optional: supplier_contact, sender_title, date, reply_by, message,
     and per-item unit_of_measure and make_brand. Dates are pre-formatted strings.
     """
-    if not isinstance(context, dict):
-        raise ValidationError("The RFQ context must be a dict.")
-    if not _is_plain(context):
-        raise ValidationError(
-            "The RFQ context may hold only plain strings, numbers, booleans, lists "
-            "and dicts. Flatten model instances, enums, Decimals and dates first."
-        )
-    errors = [f"Missing '{key}'." for key in REQUIRED_KEYS if context.get(key) in (None, "", [])]
-    items = context.get("items")
-    if isinstance(items, (list, tuple)):
-        for n, row in enumerate(items, start=1):
-            if not isinstance(row, dict):
-                errors.append(f"Item {n} must be a dict.")
-                continue
-            errors += [
-                f"Item {n}: missing '{key}'."
-                for key in REQUIRED_ITEM_KEYS
-                if row.get(key) in (None, "")
-            ]
-    elif items not in (None, "", []):
-        errors.append("'items' must be a list.")
-    if errors:
-        raise ValidationError(errors)
-    return json.loads(json.dumps(context))
+    return validate_context(
+        context, label="RFQ", required=REQUIRED_KEYS, rows=("items", REQUIRED_ITEM_KEYS, "Item")
+    )

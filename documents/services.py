@@ -6,18 +6,26 @@ Other apps call ``create_document`` with a flattened dict; they never write a
 drift apart.
 """
 
+from django.core.files.base import ContentFile
 from django.core.mail import EmailMultiAlternatives
 from django.db import transaction
+from django.utils.text import slugify
 
 from .models import Document, DocumentKind
+from .pdf import html_to_pdf
 from .rendering import render
 from .rfq import normalise_recipients, with_required_cc
+
+
+def pdf_filename(kind, reference):
+    return f"{slugify(str(kind))}-{slugify(reference)[:40] or 'document'}.pdf"
 
 
 def create_document(kind, context, *, to=(), cc=(), user=None, related_reference=""):
     """
     Render and register a document in one transaction; return the ``Document``.
 
+    Every kind is also rendered to PDF and stored on ``Document.pdf``.
     For an RFQ the sales mailbox is added to ``cc`` here, in ``Document.save()``
     and by a database constraint (R8) — passing ``cc=[]`` does not remove it.
     ``user`` becomes ``created_by`` and the audit actor; None means the system.
@@ -37,7 +45,12 @@ def create_document(kind, context, *, to=(), cc=(), user=None, related_reference
         created_by=user,
     )
     with transaction.atomic():
-        document.full_clean(exclude=["created_by"])
+        # Validate before the PDF is written to storage, so a rejected document
+        # leaves no orphan file behind.
+        document.full_clean(exclude=["created_by", "pdf"])
+        document.pdf.save(
+            pdf_filename(kind, reference), ContentFile(html_to_pdf(rendered.html)), save=False
+        )
         document.save(actor=user)
     return document
 
@@ -59,4 +72,11 @@ def build_email(document, *, from_email=None):
         cc=cc,
     )
     message.attach_alternative(document.body_html, "text/html")
+    if document.pdf:
+        with document.pdf.open("rb") as handle:
+            message.attach(
+                pdf_filename(document.kind, document.related_reference),
+                handle.read(),
+                "application/pdf",
+            )
     return message
