@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}Confirm reassignment — {{ tender.reference }} — IEA Operations{% endblock %}
+{% block content %}
+<div class="mb-3">
+  {% include "_crumbs.html" with tender=tender here="Reassign" %}
+  <h1 class="h4 mb-1">Move this tender?</h1>
+  <div class="small text-muted">{{ tender.title|default:"(awaiting verification)" }} · {{ tender.get_status_display }}</div>
+</div>
+
+<div class="card" style="max-width: 36rem"><div class="card-body">
+  <div class="reassign-pair">
+    <div><div class="small text-uppercase text-muted">From</div>
+      <div class="fw-semibold">{{ tender.project_manager.get_full_name|default:tender.project_manager.email }}</div></div>
+    <div class="arrow" aria-hidden="true">→</div>
+    <div><div class="small text-uppercase text-muted">To</div>
+      <div class="fw-semibold">{{ new_pm.get_full_name|default:new_pm.email }}</div></div>
+  </div>
+  {% if reason %}<div class="small mt-3"><span class="text-muted">Reason:</span> {{ reason }}</div>{% endif %}
+  <p class="small mt-3 mb-3">{{ new_pm.get_full_name|default:new_pm.email }} takes over this tender's PM work at once and
+    {{ tender.project_manager.get_full_name|default:tender.project_manager.email }} loses it. Both are emailed, and the move is recorded in the assignment history.</p>
+  <form method="post" class="d-flex flex-wrap gap-2">
+    {% csrf_token %}
+    <input type="hidden" name="new_pm" value="{{ new_pm.pk }}">
+    <input type="hidden" name="reason" value="{{ reason }}">
+    <input type="hidden" name="confirm" value="yes">
+    <button type="submit" class="btn btn-ink">Reassign to {{ new_pm.get_full_name|default:new_pm.email }}</button>
+    <a class="btn btn-outline-ink" href="{% url 'tenders:reassign' tender.pk %}">Back</a>
+  </form>
+</div></div>
+{% endblock %}

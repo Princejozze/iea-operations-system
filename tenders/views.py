@@ -25,7 +25,7 @@ from django.views.decorators.http import require_http_methods
 
 from accounts.models import Role
 
-from .forms import RATE_FIELD_INFO, CostingRatesForm, TenderUploadForm, TenderVerificationForm
+from .forms import RATE_FIELD_INFO, CostingRatesForm, ReassignForm, TenderUploadForm, TenderVerificationForm
 from .models import RATES_EDITABLE_STATUSES, Tender, TenderCostingRates, TenderStatus as S
 
 PAGE_SIZE = 50
@@ -200,6 +200,8 @@ def _detail_context(request, tender):
         # R16 via the reverse accessor — approvals sits below tenders (§1).
         "eligibility_reviews": (list(tender.eligibility_reviews.select_related("jv_partner"))
                                 if hasattr(tender, "eligibility_reviews") else []),
+        # R13: who has held it, oldest first. Every reader sees it; only the MD may change it.
+        "assignments": _assignment_history(tender),
         "can_raise_eligibility": tender.project_manager_id == request.user.pk and tender.status in (S.DRAFTING, S.COSTING),
         # RelatedObjectDoesNotExist is an AttributeError, so getattr's default applies.
         "extraction": getattr(tender, "extraction", None),
@@ -467,3 +469,43 @@ def tender_rates_apply(request, pk):
         f"{result.items_recosted} item{plural} re-costed.",
     )
     return redirect(back)
+
+
+# ---------------------------------------------------------------------------
+# Reassignment (R13)
+# ---------------------------------------------------------------------------
+#
+# Tender.reassign() does the checking (EXEC only, an active PM, not the current holder)
+# and the work (TenderAssignment row, audit entry, both PMs emailed). No status gate:
+# a tender needs an owner at every status, submitted and closed ones included.
+
+
+def _assignment_history(tender):
+    return list(tender.assignments.select_related("from_pm", "to_pm", "assigned_by").order_by("created_at", "id"))
+
+
+@login_required
+@require_http_methods(["GET", "POST"])
+def tender_reassign(request, pk):
+    """Pick a PM, then confirm on a page that names both people. Only the confirmed POST
+    (``confirm=yes``) calls reassign(), so a mis-tap on a phone moves nothing."""
+    tender = get_object_or_404(visible_tenders(request.user), pk=pk)
+    if request.user.role != Role.EXECUTIVE:
+        raise PermissionDenied("Only the Managing Director can reassign a tender (R13).")
+
+    form = ReassignForm(request.POST or None, tender=tender)
+    context = {"tender": tender, "form": form, "assignments": _assignment_history(tender)}
+    if request.method == "POST" and form.is_valid():
+        new_pm, reason = form.cleaned_data["new_pm"], form.cleaned_data["reason"].strip()
+        if request.POST.get("confirm") != "yes":
+            return render(request, "tenders/tender_reassign_confirm.html", {**context, "new_pm": new_pm, "reason": reason})
+        try:
+            tender.reassign(request.user, new_pm, reason=reason)
+        except (ValidationError, PermissionDenied) as exc:
+            for message in getattr(exc, "messages", [str(exc)]):
+                form.add_error(None, message)
+        else:
+            messages.success(request, f"{tender.reference} now belongs to {new_pm.get_full_name() or new_pm.email}. "
+                                      "Both PMs have been emailed.")
+            return redirect("tenders:detail", pk=tender.pk)
+    return render(request, "tenders/tender_reassign.html", context)

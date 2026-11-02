@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}Reassign — {{ tender.reference }} — IEA Operations{% endblock %}
+{% block content %}
+<div class="mb-3">
+  {% include "_crumbs.html" with tender=tender here="Reassign" %}
+  <h1 class="h4 mb-1">Reassign this tender</h1>
+  <div class="small text-muted">{{ tender.title|default:"(awaiting verification)" }} · {{ tender.get_status_display }}</div>
+</div>
+
+<div class="row g-3">
+  <div class="col-lg-6">
+    <div class="card"><div class="card-body">
+      <div class="small text-uppercase text-muted">Held now by</div>
+      <p class="fw-semibold fs-5 mb-3">{{ tender.project_manager.get_full_name|default:tender.project_manager.email }}</p>
+      <form method="post" novalidate>
+        {% csrf_token %}
+        {% if form.non_field_errors %}<div class="alert alert-danger" role="alert">{% for e in form.non_field_errors %}<div>{{ e }}</div>{% endfor %}</div>{% endif %}
+        {% if form.fields.new_pm.queryset.exists %}
+        {% with f=form.new_pm %}{% include "approvals/_field.html" %}{% endwith %}
+        {% with f=form.reason %}{% include "approvals/_field.html" %}{% endwith %}
+        <p class="small text-muted">The new PM takes over everything this tender's PM can do, at once; the current PM loses it. Both are emailed.</p>
+        <div class="d-flex flex-wrap gap-2">
+          <button type="submit" class="btn btn-ink">Continue…</button>
+          <a class="btn btn-outline-ink" href="{% url 'tenders:detail' tender.pk %}">Cancel</a>
+        </div>
+        {% else %}
+        <p class="mb-0">There is no other active project manager to move it to.</p>
+        {% endif %}
+      </form>
+    </div></div>
+  </div>
+  <div class="col-lg-6">
+    <div class="card"><div class="card-body">
+      <h2 class="h6">Assignment history</h2>
+      {% include "tenders/_assignment_history.html" %}
+    </div></div>
+  </div>
+</div>
+{% endblock %}

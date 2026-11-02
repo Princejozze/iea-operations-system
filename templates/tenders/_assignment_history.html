@@ -1,0 +1,20 @@
+{# R13 history, oldest first: who held the tender, who moved it, when and why. #}
+{% if assignments %}
+<ol class="assign-history">
+  {% for a in assignments %}
+  <li{% if forloop.last %} class="current"{% endif %}>
+    <div class="who">
+      {% if a.from_pm %}{{ a.from_pm.get_full_name|default:a.from_pm.email }} → {% endif %}<strong>{{ a.to_pm.get_full_name|default:a.to_pm.email }}</strong>
+      {% if forloop.last %}<span class="chip ok ms-1">holds it now</span>{% endif %}
+    </div>
+    <div class="meta">
+      {% if a.from_pm %}Reassigned by {{ a.assigned_by.get_full_name|default:a.assigned_by.email }}{% else %}Uploaded by {{ a.assigned_by.get_full_name|default:a.assigned_by.email }}{% endif %}
+      · <span class="num">{{ a.created_at|date:"j M Y, H:i" }}</span>
+    </div>
+    {% if a.reason %}<div class="reason">{{ a.reason }}</div>{% endif %}
+  </li>
+  {% endfor %}
+</ol>
+{% else %}
+<p class="small text-muted mb-0">Held by {{ tender.project_manager.get_full_name|default:tender.project_manager.email }} since upload; never reassigned.</p>
+{% endif %}

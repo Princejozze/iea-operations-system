@@ -273,3 +273,29 @@ a.ref-link { text-decoration: underline; text-underline-offset: 2px; }
   .req-other { display: none; }
   form:has(.req-choice input[value="__other__"]:checked) .req-other { display: block; }
 }
+
+/* ------------------------------------------------------------------------
+   Reassignment (R13) and the navbar account menu
+   ------------------------------------------------------------------------ */
+.assign-history { list-style: none; padding: 0; margin: 0; }
+.assign-history li { position: relative; padding: .1rem 0 .7rem 1.1rem; border-left: 2px solid var(--iea-rule); margin-left: .35rem; }
+.assign-history li:last-child { padding-bottom: 0; }
+.assign-history li::before { content: ""; position: absolute; left: -.42rem; top: .4rem; width: .7rem; height: .7rem;
+  border-radius: 50%; background: var(--iea-card); border: 2px solid var(--iea-rule); }
+.assign-history li.current::before { background: var(--iea-ink); border-color: var(--iea-ink); }
+.assign-history .meta { font-size: .8rem; color: var(--iea-muted); }
+.assign-history .reason { font-size: .88rem; margin-top: .15rem; white-space: pre-wrap; overflow-wrap: anywhere; }
+.reassign-pair { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem 1rem; }
+.reassign-pair .arrow { font-size: 1.4rem; color: var(--iea-muted); }
+
+/* The account menu stays at the row's end and never pushes past the viewport. */
+.navbar-iea .navbar-nav { min-width: 0; }
+.account-menu { position: relative; flex: none; margin-left: .5rem; }
+.account-menu > summary { list-style: none; max-width: 14rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.account-menu > summary::-webkit-details-marker { display: none; }
+.account-menu > summary::after { content: " ▾"; }
+.account-panel { position: absolute; right: 0; top: calc(100% + .35rem); z-index: 1050; min-width: 13rem;
+  background: var(--iea-card); border: 1px solid var(--iea-rule); border-radius: .35rem; box-shadow: 0 6px 18px rgba(14, 42, 51, .18); padding-bottom: .35rem; }
+.account-panel form { margin: 0; }
+.account-item { display: block; width: 100%; text-align: left; padding: .5rem 1rem; color: var(--iea-ink); background: none; border: 0; text-decoration: none; }
+.account-item:hover, .account-item:focus-visible { background: var(--iea-paper); color: var(--iea-ink); }

@@ -3,12 +3,15 @@
 import datetime
 
 from django import forms
+from django.contrib.auth import get_user_model
+from django.db.models import Count, Q
 from django.db.models.functions import Lower
 from django.utils import timezone
 
+from accounts.models import Role
 from core.models import Client, TenderCategory
 
-from .models import BidSecurityType
+from .models import BidSecurityType, TenderStatus as S
 
 MAX_UPLOAD_MB = 50
 
@@ -244,3 +247,36 @@ class CostingRatesForm(forms.Form):
                 "class": "form-control num", "inputmode": "decimal", "step": step, "autocomplete": "off",
             })
             self.fields[name] = field
+
+
+# ---------------------------------------------------------------------------
+# Reassignment (R13): the MD moves a tender to another PM
+# ---------------------------------------------------------------------------
+
+
+class ReassignForm(forms.Form):
+    """Any active PM except the one who holds it now. Each option shows how many open
+    tenders that PM already carries, so the MD can see the load before choosing."""
+
+    new_pm = forms.ModelChoiceField(
+        label="Move it to", queryset=None, empty_label="Choose a project manager…",
+        widget=forms.Select(attrs={"class": "form-select"}),
+    )
+    reason = forms.CharField(
+        label="Reason", required=False, max_length=2000,
+        widget=forms.Textarea(attrs={"rows": 3, "class": "form-control"}),
+        help_text="Optional. Recorded in the assignment history and sent to both PMs.",
+    )
+
+    def __init__(self, *args, tender, **kwargs):
+        super().__init__(*args, **kwargs)
+        closed = (S.WON, S.LOST, S.WITHDRAWN)
+        self.fields["new_pm"].queryset = (
+            get_user_model().objects.filter(role=Role.PROJECT_MANAGER, is_active=True)
+            .exclude(pk=tender.project_manager_id)
+            .annotate(open_tenders=Count("tenders_managed", filter=~Q(tenders_managed__status__in=closed)))
+            .order_by("first_name", "last_name", "email")
+        )
+        self.fields["new_pm"].label_from_instance = lambda u: (
+            f"{u.get_full_name() or u.email} — {u.open_tenders} open tender{'' if u.open_tenders == 1 else 's'}"
+        )

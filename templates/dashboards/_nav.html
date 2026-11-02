@@ -20,14 +20,28 @@
         </li>
         {% endfor %}
       </ul>
-      <div class="d-flex flex-wrap align-items-center gap-2 py-2 py-xl-0">
-        <span class="navbar-text small" title="{{ user.get_role_display }}">{{ user.get_full_name|default:user.email }}<span class="d-xl-none d-xxl-inline"> · {{ user.get_role_display }}</span></span>
+      {# Below xl the menu is a stacked list: name, role and both buttons in full. #}
+      <div class="d-flex d-xl-none flex-wrap align-items-center gap-2 py-2">
+        <span class="navbar-text small">{{ user.get_full_name|default:user.email }} · {{ user.get_role_display }}</span>
         <a class="btn btn-sm btn-outline-light" href="{% url 'password_change' %}">Password</a>
         <form method="post" action="{% url 'logout' %}">
           <input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf_token }}">
           <button class="btn btn-sm btn-outline-light" type="submit">Log out</button>
         </form>
       </div>
+      {% comment %}From xl the links share one row with the account, so the account folds into one
+         button. <details> needs no JavaScript, so it works before scripts load on 3G.{% endcomment %}
+      <details class="account-menu d-none d-xl-block">
+        <summary class="btn btn-sm btn-outline-light" title="{{ user.get_role_display }}">{{ user.get_full_name|default:user.email }}</summary>
+        <div class="account-panel">
+          <div class="small text-muted px-3 pt-2 pb-1">{{ user.get_role_display }}<br>{{ user.email }}</div>
+          <a class="account-item" href="{% url 'password_change' %}">Change password</a>
+          <form method="post" action="{% url 'logout' %}">
+            <input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf_token }}">
+            <button class="account-item" type="submit">Log out</button>
+          </form>
+        </div>
+      </details>
     </div>
     {% elif user.is_authenticated %}
     <form method="post" action="{% url 'logout' %}" class="ms-auto">

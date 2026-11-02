@@ -12,6 +12,7 @@ urlpatterns = [
     path("<int:pk>/", views.tender_detail, name="detail"),
     path("<int:pk>/status/", views.tender_status, name="status"),
     path("<int:pk>/verify/", views.tender_verify, name="verify"),
+    path("<int:pk>/reassign/", views.tender_reassign, name="reassign"),
     path("<int:pk>/rates/", views.tender_rates, name="rates"),
     path("<int:pk>/rates/apply/", views.tender_rates_apply, name="rates_apply"),
 ]
