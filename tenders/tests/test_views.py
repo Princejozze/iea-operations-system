@@ -49,9 +49,11 @@ class AccessTests(ViewTestBase):
 
     def test_other_roles_can_read(self):
         tender = self.new_tender()
-        for user in (self.md, self.hops, self.pm2, self.auditor, self.finance):
+        for user in (self.md, self.hops, self.auditor, self.finance):
             self.client.force_login(user)
             self.assertEqual(self.client.get(reverse("tenders:detail", args=[tender.pk])).status_code, 200, user.role)
+        self.client.force_login(self.pm2)  # R23: another PM is refused
+        self.assertEqual(self.client.get(reverse("tenders:detail", args=[tender.pk])).status_code, 403)
 
 
 class SearchTests(ViewTestBase):

@@ -38,7 +38,8 @@ class SheetTestCase(ItemFixtures, TestCase):
 class SheetAccessTests(SheetTestCase):
     def test_who_can_read_the_sheet(self):
         url = reverse("items:sheet", args=[self.tender.pk])
-        for user, expected in ((self.pm, 200), (self.pm2, 200), (self.md, 200), (self.hops, 200), (self.auditor, 200),
+        # R23: another PM is refused (403), never shown the sheet read-only.
+        for user, expected in ((self.pm, 200), (self.pm2, 403), (self.md, 200), (self.hops, 200), (self.auditor, 200),
                                (self.finance, 403), (self.admin_user, 403),
                                (make_user(Role.CLEARING_AGENT, "clearer"), 403)):
             self.client.force_login(user)
@@ -47,9 +48,11 @@ class SheetAccessTests(SheetTestCase):
     def test_only_the_owning_pm_gets_inputs(self):
         url = reverse("items:sheet", args=[self.tender.pk])
         self.assertContains(self.client.get(url), 'name="unit_price"')
-        for user in (self.pm2, self.md, self.auditor):
+        for user in (self.md, self.auditor):
             self.client.force_login(user)
             self.assertNotContains(self.client.get(url), 'name="unit_price"', msg_prefix=user.role)
+        self.client.force_login(self.pm2)
+        self.assertEqual(self.client.get(url).status_code, 403)  # R23: not even read-only
 
     def test_another_pm_cannot_save(self):
         self.client.force_login(self.pm2)

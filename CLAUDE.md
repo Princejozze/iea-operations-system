@@ -603,7 +603,7 @@ PM-confirmed: `title`, `client` (FK), `client_address`, `official_reference`,
 `bid_security_type`, `site_visit_required`, `site_visit_date`,
 `special_requirements`, `required_forms`, `category`.
 Assignment: `project_manager` — role `PM` only, changed only by `EXEC`, to any
-active PM, at any status (R13).
+active PM, at any status (R13). It is also the access boundary for PMs (R23).
 
 `previous_status` exists so the eligibility side state can return a tender to the
 stage it came from.
@@ -805,9 +805,9 @@ Enforce per §4 "Enforcement". Cite these by number when working on them.
   **no status restriction** — `SUBMITTED`, `WON`, `LOST` and `WITHDRAWN` included —
   because outcome capture, award recording and post-award work still need an
   owner, and reassignment is the only way work moves between people. Access
-  follows the field: the new PM gains the tender's PM rights and the previous PM
-  loses them at once. The change writes a `TenderAssignment`; both PMs are
-  notified. Never add a status gate to `Tender.reassign()`.
+  follows the field (R23): the new PM gains the tender and the previous PM loses
+  it at once. The change writes a `TenderAssignment`; both PMs are notified.
+  Never add a status gate to `Tender.reassign()`.
 - **R14 — Announcements are one-way, `EXEC` only.** Not a chat channel.
 - **R15 — Every tender needs MD registration approval.** No item, costing or RFQ
   work may begin before it. Declining sends the tender to `WITHDRAWN`.
@@ -846,6 +846,19 @@ Enforce per §4 "Enforcement". Cite these by number when working on them.
   `COSTING`, alongside R4, and R9 returning it to `COSTING` unlocks them. While it is
   in `PENDING_ELIGIBILITY_DECISION` they are frozen (R9a). The formulas never change,
   only the numbers.
+- **R23 — A PM sees only their own tenders.** `Tender.project_manager` scopes every
+  PM-facing path: the tender list and search, detail, verification, rates, the item
+  sheet, individual items, quotes, attachments, the quote sheet download and upload,
+  audits, fund requests and eligibility reviews, htmx fragment endpoints included.
+  Another PM gets **403**, never a hidden link or a page shown without its buttons; a
+  tender that does not exist is 404. Enforce in querysets, not templates, as R5 does:
+  `tenders.views.visible_tenders` scopes a PM to the tenders they hold, and every view
+  reaches its tender through `tender_or_403` (fund requests through `_fund_or_403`).
+  `AUDIT`, `HOPS`, `EXEC`, `ADMIN` and `FIN` stay unscoped; `CLEAR` sees post-award
+  only (R5). Reassignment under R13 transfers access: the new PM gains it and the
+  previous PM loses it, including on tenders they used to hold. Audit entries they
+  already wrote remain (R7). `items/tests/test_r23_pm_scope.py` probes every route in
+  the URL resolver, so a new endpoint fails the suite until it is covered.
 
 ---
 

@@ -13,6 +13,7 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import transaction
+from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_http_methods
 
@@ -21,7 +22,7 @@ from tenders.models import Tender, TenderStatus as S
 
 from items.forms import add_model_errors
 from items.summary import bid_summary
-from tenders.views import days_to_deadline, visible_tenders
+from tenders.views import days_to_deadline, tender_or_403
 
 from .forms import (
     EligibilityDecisionForm, FundDecisionForm, FundRequestForm, MarkPaidForm, RaiseEligibilityForm,
@@ -162,6 +163,17 @@ def _visible_funds(user):
     return qs
 
 
+def _fund_or_403(user, pk):
+    """One fund request from _visible_funds(): 404 if it does not exist, 403 if it is on
+    another PM's tender (R23), never a silent "not found"."""
+    try:
+        return _visible_funds(user).get(pk=pk)
+    except FundRequest.DoesNotExist:
+        if FundRequest.objects.filter(pk=pk).exists():
+            raise PermissionDenied("This fund request is on a tender held by another Project Manager (R23).") from None
+        raise Http404("No such fund request.") from None
+
+
 @login_required
 def fund_list(request):
     qs = _visible_funds(request.user)
@@ -178,7 +190,7 @@ def fund_list(request):
 @login_required
 @require_http_methods(["GET", "POST"])
 def fund_new(request, tender_pk):
-    tender = get_object_or_404(visible_tenders(request.user), pk=tender_pk)
+    tender = tender_or_403(request.user, tender_pk)
     if request.user.role != Role.PROJECT_MANAGER or tender.project_manager_id != request.user.pk:
         raise PermissionDenied("Only this tender's PM raises its fund requests.")
     form = FundRequestForm(request.POST or None)
@@ -205,7 +217,7 @@ def fund_new(request, tender_pk):
 
 @login_required
 def fund_detail(request, pk):
-    fr = get_object_or_404(_visible_funds(request.user), pk=pk)
+    fr = _fund_or_403(request.user, pk)
     role, status = request.user.role, fr.status
     return render(request, "approvals/fund_detail.html", {
         "fr": fr, "tender": fr.tender, "has_nest_funds": fr.tender.has_nest_funds,
@@ -218,7 +230,7 @@ def fund_detail(request, pk):
 @login_required
 @require_http_methods(["POST"])
 def fund_decide(request, pk):
-    fr = get_object_or_404(_visible_funds(request.user), pk=pk)
+    fr = _fund_or_403(request.user, pk)
     form = FundDecisionForm(request.POST)
     if not form.is_valid():
         for errors in form.errors.values():
@@ -241,7 +253,7 @@ def fund_decide(request, pk):
 @login_required
 @require_http_methods(["POST"])
 def fund_pay(request, pk):
-    fr = get_object_or_404(_visible_funds(request.user), pk=pk)
+    fr = _fund_or_403(request.user, pk)
     form = MarkPaidForm(request.POST)
     if not form.is_valid():
         messages.error(request, "Enter the payment reference.")
@@ -298,7 +310,7 @@ def eligibility_queue(request):
 def eligibility_raise(request, tender_pk):
     """R16: the tender's PM escalates an unmet special requirement. Raising it freezes the
     tender (R9a) until the MD rules."""
-    tender = get_object_or_404(visible_tenders(request.user), pk=tender_pk)
+    tender = tender_or_403(request.user, tender_pk)
     if tender.project_manager_id != request.user.pk:
         raise PermissionDenied("Only this tender's PM can raise an eligibility review (R16).")
     open_review = tender.eligibility_reviews.filter(md_decision="").first()
@@ -334,7 +346,7 @@ def eligibility_review(request, pk):
         EligibilityReview.objects.select_related("tender", "tender__client", "raised_by", "decided_by", "jv_partner"),
         pk=pk,
     )
-    tender = get_object_or_404(visible_tenders(request.user), pk=review.tender_id)  # R5 and 403 for CLEAR
+    tender = tender_or_403(request.user, review.tender_id)  # R5 and 403 for CLEAR
     is_md = request.user.role == Role.EXECUTIVE
     can_decide = is_md and review.is_open and tender.status == S.PENDING_ELIGIBILITY_DECISION
 

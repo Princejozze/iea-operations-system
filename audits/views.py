@@ -20,7 +20,7 @@ from django.views.decorators.http import require_POST
 from accounts.models import Role
 from items.forms import add_model_errors, error_messages
 from tenders.models import Tender, TenderStatus as S
-from tenders.views import days_to_deadline, visible_tenders, with_item_counts
+from tenders.views import days_to_deadline, tender_or_403, with_item_counts
 
 from .forms import AuditLineForm, CompleteAuditForm
 from .models import QCAudit, QCAuditLine, Verdict
@@ -42,7 +42,7 @@ def _can_read(user, tender):
 
 
 def _tender_for_reading(user, pk):
-    tender = get_object_or_404(visible_tenders(user), pk=pk)  # R5: clearing agents never get here
+    tender = tender_or_403(user, pk)  # R5 and R23: CLEAR and other PMs are refused here
     if not _can_read(user, tender):
         raise PermissionDenied("This audit is not yours to read.")
     return tender
@@ -155,7 +155,7 @@ def _count(key, lines):
 @login_required
 @require_POST
 def start(request, tender_pk):
-    tender = get_object_or_404(visible_tenders(request.user), pk=tender_pk)
+    tender = tender_or_403(request.user, tender_pk)
     if request.user.role != Role.AUDITOR:
         raise PermissionDenied("Only an auditor opens a QC audit.")
     try:
@@ -214,7 +214,7 @@ def line_save(request, pk):
 @login_required
 @require_POST
 def complete(request, tender_pk):
-    tender = get_object_or_404(visible_tenders(request.user), pk=tender_pk)
+    tender = tender_or_403(request.user, tender_pk)
     audit = tender.qc_audits.filter(verdict="").first()
     if audit is None:
         messages.info(request, "There is no open audit to complete.")

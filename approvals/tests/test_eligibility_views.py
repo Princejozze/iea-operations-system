@@ -25,7 +25,7 @@ class RaiseScreenTests(TenderFixtures, TestCase):
         self.client.force_login(self.pm)
         self.assertContains(self.client.get(detail), self.url)
         self.client.force_login(self.pm2)
-        self.assertNotContains(self.client.get(detail), self.url)
+        self.assertEqual(self.client.get(detail).status_code, 403)  # R23: not their tender at all
         self.assertEqual(self.client.get(self.url).status_code, 403)
 
     def test_the_tenders_own_requirements_are_offered(self):

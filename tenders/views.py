@@ -17,8 +17,8 @@ from django.core.exceptions import PermissionDenied, ValidationError
 from django.core.paginator import Paginator
 from django.db import transaction
 from django.db.models import Count, Q
-from django.http import HttpResponse
-from django.shortcuts import get_object_or_404, redirect, render
+from django.http import Http404, HttpResponse
+from django.shortcuts import redirect, render
 from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_http_methods
@@ -44,9 +44,33 @@ def _require_tender_reader(user):
 
 
 def visible_tenders(user):
-    """The tender queryset a user may read. Enforced here, not in templates (R5)."""
+    """The tender queryset a user may read. Enforced here, in the queryset, never in
+    templates: clearing agents get none (R5); a PM gets only the tenders they hold now
+    (R23); the MD, Head of Operations, Auditor, Finance and Admin read every tender.
+
+    Scoping on the current ``project_manager`` is what makes R13 reassignment transfer
+    access: the new PM gains the tender and the previous PM loses it, at once."""
     _require_tender_reader(user)
-    return Tender.objects.select_related("client", "project_manager")
+    tenders = Tender.objects.select_related("client", "project_manager")
+    if user.role == Role.PROJECT_MANAGER:
+        tenders = tenders.filter(project_manager=user)
+    return tenders
+
+
+def tender_or_403(user, pk):
+    """The one tender ``pk`` that ``user`` may read, from visible_tenders(). Every view that
+    reaches a tender, or anything under it (items, quotes, attachments, audits, funds),
+    starts here.
+
+    404 when no such tender exists; 403 when it exists but is not theirs (R23): a PM asking
+    for another PM's tender is refused, not told it is missing, and never merely shown a
+    page without the link."""
+    try:
+        return visible_tenders(user).get(pk=pk)
+    except Tender.DoesNotExist:
+        if Tender.objects.filter(pk=pk).exists():
+            raise PermissionDenied("This tender is held by another Project Manager (R23).") from None
+        raise Http404("No such tender.") from None
 
 
 def search_tenders(queryset, q):
@@ -223,14 +247,14 @@ def _detail_context(request, tender):
 
 @login_required
 def tender_detail(request, pk):
-    tender = get_object_or_404(visible_tenders(request.user), pk=pk)
+    tender = tender_or_403(request.user, pk)
     return render(request, "tenders/tender_detail.html", _detail_context(request, tender))
 
 
 @login_required
 def tender_status(request, pk):
     """Polled by htmx while EXTRACTING. Once the tender has moved on, the page reloads."""
-    tender = get_object_or_404(visible_tenders(request.user), pk=pk)
+    tender = tender_or_403(request.user, pk)
     if tender.status != S.EXTRACTING:
         response = HttpResponse(status=204)
         response["HX-Refresh"] = "true"
@@ -242,7 +266,7 @@ def tender_status(request, pk):
 @require_http_methods(["GET", "POST"])
 def tender_verify(request, pk):
     """§5 step 7: the PM checks every extracted field against its source page and confirms (R12)."""
-    tender = get_object_or_404(visible_tenders(request.user), pk=pk)
+    tender = tender_or_403(request.user, pk)
     if tender.project_manager_id != request.user.pk:
         raise PermissionDenied("Only this tender's PM can verify it.")
     if tender.status != S.PENDING_VERIFICATION:
@@ -365,7 +389,7 @@ def _changes(saved, new):
 
 
 def _rates_tender(request, pk):
-    tender = get_object_or_404(visible_tenders(request.user), pk=pk)
+    tender = tender_or_403(request.user, pk)
     return tender, TenderCostingRates.for_tender(tender)
 
 
@@ -489,7 +513,7 @@ def _assignment_history(tender):
 def tender_reassign(request, pk):
     """Pick a PM, then confirm on a page that names both people. Only the confirmed POST
     (``confirm=yes``) calls reassign(), so a mis-tap on a phone moves nothing."""
-    tender = get_object_or_404(visible_tenders(request.user), pk=pk)
+    tender = tender_or_403(request.user, pk)
     if request.user.role != Role.EXECUTIVE:
         raise PermissionDenied("Only the Managing Director can reassign a tender (R13).")
 

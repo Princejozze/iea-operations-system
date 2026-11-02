@@ -124,7 +124,8 @@ class FundRequestScreenTests(ItemFixtures, TestCase):
         self.assertContains(response, mine.tender.reference)
         self.assertNotContains(response, other.reference)
         theirs = FundRequest.objects.get(tender=other)
-        self.assertEqual(self.client.get(reverse("approvals:fund_detail", args=[theirs.pk])).status_code, 404)
+        # R23: another PM's request is refused, not reported missing.
+        self.assertEqual(self.client.get(reverse("approvals:fund_detail", args=[theirs.pk])).status_code, 403)
 
     def test_who_can_open_the_fund_list(self):
         for user, expected in ((self.pm, 200), (self.md, 200), (self.finance, 200), (self.hops, 200),

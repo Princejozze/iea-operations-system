@@ -27,7 +27,7 @@ from django.views.decorators.http import require_http_methods, require_POST
 from accounts.models import Role
 from suppliers.models import Supplier
 from tenders.models import WORK_ALLOWED_STATUSES, Tender, TenderStatus as S
-from tenders.views import visible_tenders
+from tenders.views import tender_or_403
 
 from .forms import (
     AttachmentForm, ItemRowForm, NewItemForm, QuoteForm, QuoteSheetUploadForm,
@@ -39,7 +39,8 @@ from .services.quotes import enter_quote
 from .summary import bid_summary, blocker_counts, missing_for_audit
 
 # Who may read an item sheet. Finance sees budget figures on fund requests, not item
-# costs; clearing agents see post-award records only (R5, enforced in visible_tenders).
+# costs; clearing agents see post-award records only (R5) and a PM reads only their own
+# tenders (R23), both enforced in tenders.views.visible_tenders.
 SHEET_READERS = (Role.EXECUTIVE, Role.HEAD_OF_OPERATIONS, Role.PROJECT_MANAGER, Role.AUDITOR)
 FILTERS = (("all", "All"), ("unpriced", "Unpriced"), ("incomplete", "Incomplete"))
 
@@ -52,7 +53,7 @@ FILTERS = (("all", "All"), ("unpriced", "Unpriced"), ("incomplete", "Incomplete"
 def _tender_for_reading(user, pk):
     if user.role not in SHEET_READERS:
         raise PermissionDenied("The item sheet is for the PM, the Head of Operations, the auditor and the MD.")
-    return get_object_or_404(visible_tenders(user), pk=pk)
+    return tender_or_403(user, pk)
 
 
 def _can_edit(user, tender):
@@ -210,7 +211,7 @@ def _fresh(item):
 @login_required
 @require_POST
 def item_add(request, pk):
-    tender = get_object_or_404(visible_tenders(request.user), pk=pk)
+    tender = tender_or_403(request.user, pk)
     _tender_for_editing(request.user, tender)
     form = NewItemForm(request.POST)
     if not form.is_valid() or not _can_edit(request.user, tender):
@@ -332,7 +333,7 @@ def attachment_download(request, pk):
 @login_required
 @require_POST
 def start_costing(request, pk):
-    tender = get_object_or_404(visible_tenders(request.user), pk=pk)
+    tender = tender_or_403(request.user, pk)
     try:
         tender.start_costing(request.user)
     except (ValidationError, PermissionDenied) as exc:
@@ -345,7 +346,7 @@ def start_costing(request, pk):
 @login_required
 @require_POST
 def submit_for_audit(request, pk):
-    tender = get_object_or_404(visible_tenders(request.user), pk=pk)
+    tender = tender_or_403(request.user, pk)
     try:
         tender.submit_for_audit(request.user)
     except (ValidationError, PermissionDenied) as exc:
