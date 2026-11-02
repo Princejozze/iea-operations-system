@@ -204,3 +204,43 @@ class TenderVerificationForm(forms.Form):
             "required_forms": lines(d["required_forms"]),
             "category": d["category"],
         }
+
+
+# ---------------------------------------------------------------------------
+# The MD's pricing screen (R22): the numbers only — never the formulas.
+# ---------------------------------------------------------------------------
+
+# field -> (label, how the chain uses it, unit). The "how" text is read-only by design:
+# the formulas are fixed (§4), so the screen describes them and edits only the numbers.
+RATE_FIELD_INFO = {
+    "shipping_pct": ("Shipping", "% of import material, when freight is not in the price", "%"),
+    "duty_pct": ("Duty", "% of CIF", "%"),
+    "cnf_pct": ("C&F", "% of CIF", "%"),
+    "labour_rate_tzs_per_hour": ("Labour rate", "TZS per labour hour", "TZS/h"),
+    "overhead_pct": ("Overhead", "% of material + risk; also on labour", "%"),
+    "margin_pct": ("Margin", "% of material + risk + overhead; also on labour", "%"),
+    "maintenance_pct": ("Maintenance & guarantee", "% of material and labour selling", "%"),
+    "cost_of_capital_pct": ("Cost of capital", "% of total material — stored, NOT in the total (§4)", "%"),
+}
+
+
+class CostingRatesForm(forms.Form):
+    """One field per TenderCostingRates.RATE_FIELDS, mirroring the model's ranges.
+    The model validates again in preview()/apply(); this gives friendly errors first."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        for name, (label, how, unit) in RATE_FIELD_INFO.items():
+            if unit == "%":
+                field = forms.DecimalField(
+                    label=label, max_digits=5, decimal_places=2, min_value=0, max_value=100,
+                )
+                step = "0.01"
+            else:
+                field = forms.DecimalField(label=label, max_digits=12, decimal_places=2, min_value=0)
+                step = "100"
+            field.help_text = how
+            field.widget.attrs.update({
+                "class": "form-control num", "inputmode": "decimal", "step": step, "autocomplete": "off",
+            })
+            self.fields[name] = field

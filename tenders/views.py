@@ -8,6 +8,8 @@ accessor ``tender.items`` — never an import from apps below (§1).
 """
 
 from dataclasses import dataclass
+from decimal import ROUND_HALF_UP, Decimal
+from urllib.parse import urlencode
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
@@ -17,13 +19,14 @@ from django.db import transaction
 from django.db.models import Count, Q
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_http_methods
 
 from accounts.models import Role
 
-from .forms import TenderUploadForm, TenderVerificationForm
-from .models import Tender, TenderStatus as S
+from .forms import RATE_FIELD_INFO, CostingRatesForm, TenderUploadForm, TenderVerificationForm
+from .models import RATES_EDITABLE_STATUSES, Tender, TenderCostingRates, TenderStatus as S
 
 PAGE_SIZE = 50
 POLL_SECONDS = 10  # gentle on 3G; extraction takes one to two minutes (§6)
@@ -192,6 +195,8 @@ def _detail_context(request, tender):
         "poll_seconds": POLL_SECONDS,
         "is_pm": tender.project_manager_id == request.user.pk,
         "is_md": request.user.role == Role.EXECUTIVE,
+        # R22: every reader may see the rates; before registration there is nothing to price.
+        "show_rates_link": tender.status not in (S.EXTRACTING, S.PENDING_VERIFICATION),
         # RelatedObjectDoesNotExist is an AttributeError, so getattr's default applies.
         "extraction": getattr(tender, "extraction", None),
         # Reverse accessors, never imports (§1): items, audits and approvals live below this app.
@@ -283,3 +288,178 @@ def _add_transition_errors(form, exc):
     else:
         for message in exc.messages:
             form.add_error(None, message)
+
+
+# ---------------------------------------------------------------------------
+# The MD's pricing screen (R22)
+# ---------------------------------------------------------------------------
+#
+# TenderCostingRates.preview() and .apply() do all the work and all the checking;
+# these views only collect numbers and show results. preview() saves nothing, so
+# the MD may try numbers on a locked tender too; apply() refuses unless EXEC and
+# DRAFTING or COSTING, whatever this screen shows.
+
+
+def rates_lock_reason(status):
+    """Why a tender's rates cannot be changed now, in plain words. None if they can."""
+    if status in RATES_EDITABLE_STATUSES:
+        return None
+    if status == S.PENDING_ELIGIBILITY_DECISION:
+        return ("Frozen while the eligibility review is decided (R9a). They unlock when the "
+                "tender returns to drafting or costing.")
+    if status in (S.EXTRACTING, S.PENDING_VERIFICATION, S.PENDING_REGISTRATION_APPROVAL):
+        return "Not registered yet. The rates can be set once the tender is approved and drafting (R15)."
+    if status in (S.PENDING_AUDIT, S.PENDING_EXECUTIVE_APPROVAL, S.READY_TO_SUBMIT):
+        return ("Locked when the tender left costing for QC audit, together with the exchange rates "
+                "(R4, R22). A failed audit or a declined submission returns it to costing and unlocks them (R9).")
+    if status == S.WITHDRAWN:
+        return "The tender is withdrawn."
+    return "The bid has been submitted. These are the rates it was priced at."
+
+
+def _tzs(value):
+    """Whole TZS with thousands separators: 5,398,400."""
+    return f"{Decimal(value).quantize(Decimal(1), rounding=ROUND_HALF_UP):,}"
+
+
+def _rate_text(value):
+    """20.00 -> 20, 22.25 -> 22.25, 15000.00 -> 15,000."""
+    return f"{Decimal(value).normalize():,f}"
+
+
+def _comparison(baseline, candidate):
+    """Baseline vs candidate bid totals (BidPreview each), ready for the template."""
+    diff = candidate.total_selling - baseline.total_selling
+    if baseline.total_selling:
+        pct = (diff / baseline.total_selling * 100).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        pct_text = f"{pct:+.2f}%".replace("-", "−")
+    else:
+        pct_text = None  # nothing priced yet: a percentage of zero means nothing
+    sign = "+" if diff > 0 else ("−" if diff < 0 else "")
+    return {
+        "baseline": _tzs(baseline.total_selling),
+        "candidate": _tzs(candidate.total_selling),
+        "diff": f"{sign}{_tzs(abs(diff))}",
+        "diff_pct": pct_text,
+        "direction": "up" if diff > 0 else ("down" if diff < 0 else "same"),
+        "priced": candidate.priced_items,
+        "unpriced": candidate.unpriced_items,
+        "items": candidate.priced_items + candidate.unpriced_items,
+    }
+
+
+def _changes(saved, new):
+    """One row per rate the candidate changes: label, old, new, unit."""
+    return [
+        {"label": RATE_FIELD_INFO[name][0], "old": _rate_text(saved[name]),
+         "new": _rate_text(new[name]), "unit": RATE_FIELD_INFO[name][2]}
+        for name in TenderCostingRates.RATE_FIELDS
+        if Decimal(new[name]) != Decimal(saved[name])
+    ]
+
+
+def _rates_tender(request, pk):
+    tender = get_object_or_404(visible_tenders(request.user), pk=pk)
+    return tender, TenderCostingRates.for_tender(tender)
+
+
+def _preview_or_errors(row, form):
+    """(comparison, changes) for a bound form, or (None, None) with the errors on the form."""
+    if not form.is_valid():
+        return None, None
+    try:
+        candidate = row.preview(**form.cleaned_data)
+    except ValidationError as exc:
+        _add_transition_errors(form, exc)
+        return None, None
+    return _comparison(row.preview(), candidate), _changes(row.values(), form.cleaned_data)
+
+
+@login_required
+def tender_rates(request, pk):
+    """
+    The MD tunes this bid's rates (R22). Every tender reader sees the rates; only EXEC
+    gets inputs. With htmx each change re-previews (a GET: nothing is saved); without
+    JavaScript the "Preview" button submits the same GET and the page re-renders.
+    """
+    tender, row = _rates_tender(request, pk)
+    is_md = request.user.role == Role.EXECUTIVE
+    is_htmx = bool(request.headers.get("HX-Request"))
+    if is_htmx and not is_md:
+        raise PermissionDenied("Only the MD tries costing rates (R22).")
+    saved = row.values()
+    lock_reason = rates_lock_reason(tender.status)
+
+    trying = is_md and any(name in request.GET for name in TenderCostingRates.RATE_FIELDS)
+    # Inputs show 10 and 15000, not 10.00 and 15000.00.
+    form = CostingRatesForm(request.GET if trying else None,
+                            initial={n: f"{Decimal(v).normalize():f}" for n, v in saved.items()})
+    if trying:
+        comparison, changes = _preview_or_errors(row, form)
+    else:
+        current = row.preview()
+        comparison, changes = _comparison(current, current), []
+
+    defaults = TenderCostingRates.baseline_values()
+    context = {
+        "tender": tender, "form": form, "is_md": is_md, "lock_reason": lock_reason,
+        "can_apply": is_md and lock_reason is None,
+        "comparison": comparison, "changes": changes,
+        "rows": [
+            {"field": form[name], "label": label, "how": how, "unit": unit,
+             "saved": _rate_text(saved[name]), "default": _rate_text(defaults[name]),
+             "is_default": Decimal(saved[name]) == Decimal(defaults[name])}
+            for name, (label, how, unit) in RATE_FIELD_INFO.items()
+        ],
+    }
+    template = "tenders/_rates_result.html" if is_htmx else "tenders/tender_rates.html"
+    return render(request, template, context)
+
+
+@login_required
+@require_http_methods(["POST"])
+def tender_rates_apply(request, pk):
+    """
+    Two steps, because applying changes the bid price: the first POST shows exactly what
+    will change and the new total; only the second (``confirm=yes``) calls apply().
+    """
+    tender, row = _rates_tender(request, pk)
+    if request.user.role != Role.EXECUTIVE:
+        raise PermissionDenied("Only the MD may set a tender's costing rates (R22).")
+    back = reverse("tenders:rates", args=[tender.pk])
+    lock_reason = rates_lock_reason(tender.status)
+    if lock_reason:
+        messages.error(request, f"The rates were not changed. {lock_reason}")
+        return redirect(back)
+
+    form = CostingRatesForm(request.POST)
+    comparison, changes = _preview_or_errors(row, form)
+    if comparison is None:
+        problems = "; ".join(
+            f"{form.fields[name].label}: {errors[0]}" if name in form.fields else errors[0]
+            for name, errors in form.errors.items()
+        )
+        messages.error(request, f"Nothing was applied. {problems}")
+        return redirect(back)
+    if not changes:
+        messages.info(request, "Those are already this tender's rates; there is nothing to apply.")
+        return redirect(back)
+
+    if request.POST.get("confirm") != "yes":
+        return render(request, "tenders/tender_rates_confirm.html", {
+            "tender": tender, "form": form, "comparison": comparison, "changes": changes, "is_md": True,
+            "back": f"{back}?{urlencode({n: form.cleaned_data[n] for n in TenderCostingRates.RATE_FIELDS})}",
+        })
+
+    try:
+        result = row.apply(request.user, **form.cleaned_data)
+    except (ValidationError, PermissionDenied) as exc:
+        messages.error(request, "The rates were not changed. " + " ".join(getattr(exc, "messages", [str(exc)])))
+        return redirect(back)
+    plural = "" if result.items_recosted == 1 else "s"
+    messages.success(
+        request,
+        f"Rates applied. Bid total {_tzs(result.old_total)} → {_tzs(result.new_total)} TZS ex VAT; "
+        f"{result.items_recosted} item{plural} re-costed.",
+    )
+    return redirect(back)

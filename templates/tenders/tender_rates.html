@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}Pricing rates — {{ tender.reference }} — IEA Operations{% endblock %}
+{% block content %}
+<div class="mb-3">
+  <div class="mb-1">{% include "tenders/_reference.html" %}</div>
+  <h1 class="h4 mb-1">Pricing rates</h1>
+  <div class="small text-muted">{{ tender.title|default:"Untitled tender" }}{% if tender.client %} · {{ tender.client.name }}{% endif %} · {{ tender.get_status_display }}</div>
+  <a class="small d-inline-block mt-1" href="{% url 'tenders:detail' tender.pk %}">Back to the tender</a>
+</div>
+
+{% if lock_reason %}
+<div class="card mb-3 rates-locked"><div class="card-body py-2">
+  <div class="fw-semibold">Rates locked</div>
+  <div class="small">{{ lock_reason }}</div>
+  {% if is_md %}<div class="small text-muted mt-1">You can still try numbers below to see what the bid would come to. Nothing will be saved.</div>{% endif %}
+</div></div>
+{% endif %}
+
+<div class="row g-3">
+  {# The result first in the markup, so on a phone it sits above the inputs and stays in view. #}
+  <div class="col-lg-5 order-lg-2 rates-result-col">
+    <div class="card rates-result-card"><div class="card-body">
+      <h2 class="h6 mb-2">{% if is_md %}Bid total{% else %}Bid{% endif %}</h2>
+      <div id="rates-result" aria-live="polite">{% include "tenders/_rates_result.html" %}</div>
+      <div class="saving mt-1" id="rates-busy">Updating…</div>
+    </div></div>
+  </div>
+
+  <div class="col-lg-7 order-lg-1">
+    {% if is_md %}
+    <form id="rates-form" class="card" method="post" action="{% url 'tenders:rates_apply' tender.pk %}" novalidate
+          hx-get="{% url 'tenders:rates' tender.pk %}" hx-trigger="input delay:400ms" hx-target="#rates-result"
+          hx-sync="this:replace" hx-params="not csrfmiddlewaretoken" hx-indicator="#rates-busy">
+      {% csrf_token %}
+      <div class="card-body">
+        <p class="small text-muted mb-3">Change a number and the total updates. Nothing is saved until you apply{% if not can_apply %}, and these rates cannot be applied now{% endif %}. The formulas are fixed; only the rates change.</p>
+        {% for r in rows %}
+        <div class="rate-row">
+          <label class="rate-label" for="{{ r.field.id_for_label }}">{{ r.label }}
+            <span class="rate-how">{{ r.how }}</span>
+          </label>
+          <div class="rate-input">
+            <div class="input-group">
+              {{ r.field }}
+              <span class="input-group-text">{{ r.unit }}</span>
+            </div>
+            <div class="rate-hint">Saved <span class="num">{{ r.saved }}</span>{% if not r.is_default %} · company default <span class="num">{{ r.default }}</span>{% endif %}</div>
+            {% for e in r.field.errors %}<div class="small flag">{{ e }}</div>{% endfor %}
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      <div class="card-footer d-flex flex-wrap gap-2 align-items-center">
+        {% if can_apply %}<button class="btn btn-ink" type="submit">Review and apply…</button>{% endif %}
+        <noscript><button class="btn btn-outline-ink" type="submit" formmethod="get" formaction="{% url 'tenders:rates' tender.pk %}" formnovalidate>Preview</button></noscript>
+        <a class="btn btn-link" href="{% url 'tenders:rates' tender.pk %}">Reset to saved</a>
+      </div>
+    </form>
+    {% else %}
+    <div class="card"><div class="card-body">
+      <p class="small text-muted">Only the MD sets a tender's rates (R22).</p>
+      <dl class="mb-0">
+        {% for r in rows %}
+        <div class="rate-row">
+          <dt class="rate-label">{{ r.label }} <span class="rate-how">{{ r.how }}</span></dt>
+          <dd class="rate-input mb-0"><span class="num fw-semibold">{{ r.saved }}</span> {{ r.unit }}{% if not r.is_default %}<div class="rate-hint">company default <span class="num">{{ r.default }}</span></div>{% endif %}</dd>
+        </div>
+        {% endfor %}
+      </dl>
+    </div></div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

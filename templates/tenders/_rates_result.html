@@ -1,0 +1,41 @@
+{# The live result of a rate set. Swapped in by htmx on every change; nothing is saved. #}
+{% if comparison %}
+<dl class="summary-grid rates-totals mb-2">
+  {% if not is_md %}
+  <dt class="fw-bold">Bid total</dt>
+  <dd class="fw-bold"><span class="num">{{ comparison.baseline }}</span></dd>
+  {% else %}
+  <dt>Bid now <span class="text-muted small">(saved rates)</span></dt>
+  <dd><span class="num">{{ comparison.baseline }}</span></dd>
+  <dt>At these rates</dt>
+  <dd class="fw-semibold"><span class="num">{{ comparison.candidate }}</span></dd>
+  <dt class="total">Difference</dt>
+  <dd class="total diff-{{ comparison.direction }}">
+    {% if comparison.direction == "same" %}<span class="num">0</span>
+    {% else %}<span class="num">{{ comparison.diff }}</span>{% if comparison.diff_pct %} <span class="num small">({{ comparison.diff_pct }})</span>{% endif %}{% endif %}
+  </dd>
+  {% endif %}
+</dl>
+<div class="small text-muted mb-2 rates-note">TZS, ex VAT. VAT is added at bid level and is not a per-bid rate.</div>
+
+<div class="small mb-1"><span class="num">{{ comparison.priced }}</span> of <span class="num">{{ comparison.items }}</span> item{{ comparison.items|pluralize }} priced{% if comparison.unpriced %}, <span class="num flag">{{ comparison.unpriced }}</span> <span class="flag">not</span>{% endif %}.</div>
+{% if comparison.unpriced %}
+<div class="small flag mb-2">The total is incomplete: {{ comparison.unpriced }} item{{ comparison.unpriced|pluralize }} without a price {{ comparison.unpriced|pluralize:"is,are" }} not in it.</div>
+{% elif not comparison.items %}
+<div class="small text-muted mb-2">This tender has no items yet, so there is nothing to total.</div>
+{% endif %}
+
+{% if changes %}
+<div class="small mt-2 pt-2 border-top rate-changes">
+  <div class="text-muted mb-1">Trying — not saved:</div>
+  <ul class="list-unstyled mb-0 rate-changes">
+    {% for c in changes %}<li>{{ c.label }} <span class="num">{{ c.old }}</span> → <span class="num fw-semibold">{{ c.new }}</span>{% if c.unit == "%" %}%{% else %} {{ c.unit }}{% endif %}</li>{% endfor %}
+  </ul>
+</div>
+{% endif %}
+{% else %}
+<div class="small flag" role="alert">
+  Cannot total those rates:
+  <ul class="mb-0 ps-3">{% for field in form %}{% for e in field.errors %}<li>{{ field.label }}: {{ e }}</li>{% endfor %}{% endfor %}{% for e in form.non_field_errors %}<li>{{ e }}</li>{% endfor %}</ul>
+</div>
+{% endif %}

@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Apply rates? — {{ tender.reference }} — IEA Operations{% endblock %}
+{% block content %}
+<div class="mb-3">
+  <div class="mb-1">{% include "tenders/_reference.html" %}</div>
+  <h1 class="h4 mb-1">Apply these rates?</h1>
+  <div class="small text-muted">{{ tender.title|default:"Untitled tender" }}</div>
+</div>
+
+<div class="card mb-3" style="max-width: 36rem"><div class="card-body">
+  <p class="mb-2">This changes the bid price. Every item on the tender is re-costed at the new rates, and the change is recorded in the audit trail under your name.</p>
+
+  <h2 class="h6 mt-3">Rates</h2>
+  <table class="table table-sm mb-3">
+    <thead><tr><th>Rate</th><th class="num">Now</th><th class="num">New</th></tr></thead>
+    <tbody>
+      {% for c in changes %}<tr><td>{{ c.label }}</td><td class="num">{{ c.old }}{% if c.unit == "%" %}%{% endif %}</td><td class="num fw-semibold">{{ c.new }}{% if c.unit == "%" %}%{% endif %}</td></tr>{% endfor %}
+    </tbody>
+  </table>
+
+  <h2 class="h6">Bid total</h2>
+  {% include "tenders/_rates_result.html" with changes=None %}
+
+  <form method="post" action="{% url 'tenders:rates_apply' tender.pk %}" class="d-flex flex-wrap gap-2 mt-3">
+    {% csrf_token %}
+    {% for field in form %}<input type="hidden" name="{{ field.html_name }}" value="{{ field.value }}">{% endfor %}
+    <input type="hidden" name="confirm" value="yes">
+    <button class="btn btn-ink" type="submit">Apply and re-cost {{ comparison.items }} item{{ comparison.items|pluralize }}</button>
+    <a class="btn btn-outline-ink" href="{{ back }}">Back, keep trying</a>
+  </form>
+</div></div>
+{% endblock %}

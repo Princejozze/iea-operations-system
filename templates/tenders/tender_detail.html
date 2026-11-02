@@ -77,6 +77,7 @@
 <div class="d-flex flex-wrap gap-2 mb-3">
   {% if can_read_sheet and items_total and not gate_has_sheet_button %}<a class="btn btn-sm btn-outline-ink" href="{% url 'items:sheet' tender.pk %}">Item sheet <span class="num">({{ items_priced }}/{{ items_total }})</span></a>{% endif %}
   {% if can_read_audit and has_audit %}<a class="btn btn-sm btn-outline-ink" href="{% url 'audits:detail' tender.pk %}">QC audit</a>{% endif %}
+  {% if show_rates_link %}<a class="btn btn-sm btn-outline-ink" href="{% url 'tenders:rates' tender.pk %}">Pricing rates</a>{% endif %}
   {% if is_pm and can_request_funds %}<a class="btn btn-sm btn-outline-ink" href="{% url 'approvals:fund_new' tender.pk %}">Request funds</a>{% endif %}
 </div>
 

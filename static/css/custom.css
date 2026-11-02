@@ -175,3 +175,29 @@ a.ref-link { text-decoration: underline; text-underline-offset: 2px; }
   .stages { flex-wrap: nowrap; overflow-x: auto; padding-bottom: .25rem; }
   .stages li { white-space: nowrap; flex: none; }
 }
+
+/* ------------------------------------------------------------------------
+   Pricing rates (R22): the MD tries numbers, the total follows.
+   ------------------------------------------------------------------------ */
+.rate-row { display: grid; gap: .25rem .75rem; grid-template-columns: minmax(0, 1fr); padding: .55rem 0; border-bottom: 1px solid var(--iea-rule); }
+.rate-row:last-child { border-bottom: 0; }
+@media (min-width: 576px) { .rate-row { grid-template-columns: minmax(0, 1fr) 13rem; align-items: start; } }
+.rate-label { font-weight: 600; margin: 0; }
+.rate-how { display: block; font-weight: 400; font-size: .8rem; color: var(--iea-muted); }
+.rate-hint { font-size: .75rem; color: var(--iea-muted); margin-top: .15rem; }
+.rate-input .form-control { text-align: right; }
+.rates-locked { border-left: 3px solid var(--iea-muted); }
+.rates-totals dt { font-weight: 400; }
+.rates-totals dd { font-size: 1.05rem; }
+/* Desktop: the total stays beside the inputs while scrolling. */
+/* Sticky goes on the column, not the card: a sticky box only travels within its parent,
+   and the column is as tall as the inputs beside (or below) it. */
+@media (min-width: 992px) { .rates-result-col { position: sticky; top: 1rem; align-self: flex-start; } }
+/* Phone: the total pins to the top so a change is visible without scrolling. */
+@media (max-width: 991.98px) {
+  .rates-result-col { position: sticky; top: 0; z-index: 10; }
+  .rates-result-card { box-shadow: 0 2px 6px rgba(14, 42, 51, .12); }
+  .rates-result-card h2 { display: none; }
+  .rates-result-card .card-body { padding: .6rem .75rem; }
+  .rates-result-card .rate-changes, .rates-result-card .rates-note { display: none; }
+}
