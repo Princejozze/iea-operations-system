@@ -153,6 +153,11 @@ Every variable the code reads:
 | `SECRET_KEY` | **required** | Django's secret. Use the generated value above. Startup fails without it. |
 | `DATABASE_URL` | **required, no default** | `postgres://iea:THE-PASSWORD@localhost:5432/iea`. Must be PostgreSQL; unset, empty or any other engine stops startup with an instruction. |
 | `DEBUG` | optional (default `False`) | `True` for local development. **Never `True` in production.** |
+| `ENVIRONMENT` | optional locally, **`production` on the server** | `development` or `production`. Production turns on the HTTPS proxy header, secure cookies, the HTTPS redirect and HSTS, and requires `DEBUG=False`, `CSRF_TRUSTED_ORIGINS` and `LOG_FILE`. Unset, `DEBUG=True` means development; `DEBUG=False` with no `ENVIRONMENT` stops startup. |
+| `CSRF_TRUSTED_ORIGINS` | **required in production** | The site's origin, e.g. `https://ops.imperialeastafrica.tz` (comma-separate several). Must be `https://`. Without it, and the proxy header that production sets, every POST behind nginx is refused, sign-in included. |
+| `SECURE_HSTS_SECONDS` | production only (default `3600`) | HSTS lifetime. Raise to `31536000` after the first stable week. Subdomains and preload are deliberately off. |
+| `LOG_FILE` | **required in production** | e.g. `/var/log/iea/app.log`; its directory must exist. Optional in development. Every line also goes to stderr (the journal, under systemd). |
+| `LOG_LEVEL` | optional (default `INFO`) | Level for the project's own loggers. Django and libraries log `WARNING` and up; 500 errors arrive with the request and traceback, with secrets and passwords scrubbed. |
 | `ALLOWED_HOSTS` | optional (default `localhost,127.0.0.1`) | Comma-separated host names the site may be served on. |
 | `EMAIL_BACKEND` | optional | Default `django.core.mail.backends.console.EmailBackend`: emails are **printed in the terminal running the server**, which is where new users' temporary passwords appear in development. For real mail use `django.core.mail.backends.smtp.EmailBackend`. |
 | `EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD`, `EMAIL_USE_TLS` | only for SMTP | Google Workspace SMTP: `smtp.gmail.com`, `587`, the account, an **app password** (not the account password), `True`. |
@@ -167,11 +172,10 @@ Every variable the code reads:
 
 Minimal development `.env`: set `SECRET_KEY`, `DATABASE_URL` and `MEDIA_ROOT`, leave the rest as shipped.
 
-> **Where uploads go in development.** `MEDIA_ROOT` is not set, so with `USE_S3=False`
-> uploaded files are written **inside the repository folder**: `tender_documents\`,
-> `item_attachments\` and `documents\<year>\<month>\`. None of those paths is gitignored.
-> A real tender PDF uploaded while testing would be staged by `git add .`. **Never use
-> `git add .` or `git add -A` in this repository**; stage explicit paths.
+> **Where uploads go in development.** With `USE_S3=False`, uploads are written under
+> `MEDIA_ROOT`, which must be **outside** the repository: startup refuses an unset value or a
+> path inside it, so a real tender PDF can never be staged by `git add`. Even so, **never
+> use `git add .` or `git add -A` in this repository**; stage explicit paths.
 
 Check (needs `.env` filled in):
 

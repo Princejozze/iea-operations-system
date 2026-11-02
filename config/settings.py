@@ -25,6 +25,56 @@ SECRET_KEY = env("SECRET_KEY")
 DEBUG = env("DEBUG")
 ALLOWED_HOSTS = env.list("ALLOWED_HOSTS", default=["localhost", "127.0.0.1"])
 
+# --- Environment: development or production ---
+# One explicit switch, not inferred from DEBUG: a CI run or a .env with DEBUG unset must
+# never silently turn on HTTPS redirects, and production must never silently run without
+# them. DEBUG=False with no ENVIRONMENT is therefore refused rather than guessed.
+ENVIRONMENT = env("ENVIRONMENT", default="").strip().lower()
+if ENVIRONMENT not in ("", "development", "production"):
+    raise ImproperlyConfigured(f"ENVIRONMENT must be 'development' or 'production', not {ENVIRONMENT!r}.")
+if not ENVIRONMENT:
+    if not DEBUG:
+        raise ImproperlyConfigured(
+            "DEBUG is False but ENVIRONMENT is not set. Set ENVIRONMENT=production on the server "
+            "(see docs/DEPLOY.md), or ENVIRONMENT=development with DEBUG=True locally."
+        )
+    ENVIRONMENT = "development"
+PRODUCTION = ENVIRONMENT == "production"
+if PRODUCTION and DEBUG:
+    raise ImproperlyConfigured("ENVIRONMENT=production with DEBUG=True is refused: DEBUG leaks settings and data.")
+
+# Origins allowed to POST. Read in every environment; required in production.
+CSRF_TRUSTED_ORIGINS = env.list("CSRF_TRUSTED_ORIGINS", default=[])
+
+if PRODUCTION:
+    # nginx terminates HTTPS and proxies plain HTTP. Without this header Django believes
+    # every request is http://, the browser's Origin says https://, and the CSRF check
+    # refuses every POST, sign-in included. Safe only because nginx always OVERWRITES
+    # X-Forwarded-Proto (proxy_set_header, docs/DEPLOY.md §6); never trust it otherwise,
+    # which is why it is off in development.
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+    if not CSRF_TRUSTED_ORIGINS:
+        raise ImproperlyConfigured(
+            "CSRF_TRUSTED_ORIGINS is not set. In production set it to the site's origin, "
+            "e.g. CSRF_TRUSTED_ORIGINS=https://ops.imperialeastafrica.tz"
+        )
+    _insecure = [o for o in CSRF_TRUSTED_ORIGINS if not o.startswith("https://")]
+    if _insecure:
+        raise ImproperlyConfigured(f"CSRF_TRUSTED_ORIGINS must all be https:// in production: {_insecure}")
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    SECURE_SSL_REDIRECT = True
+    # Start at an hour; raise to 31536000 (a year) after the first stable week.
+    SECURE_HSTS_SECONDS = env.int("SECURE_HSTS_SECONDS", default=3600)
+    # Deliberately NOT including subdomains: it would bind every *.imperialeastafrica.tz
+    # host, not just this app. And deliberately NOT preloading: the preload list requires
+    # includeSubDomains, and a listed domain is effectively permanent. `check --deploy`
+    # warns about both (W005, W021) and the deploy script fails on warnings, so exactly
+    # those two are silenced here, on purpose.
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = False
+    SECURE_HSTS_PRELOAD = False
+    SILENCED_SYSTEM_CHECKS = ["security.W005", "security.W021"]
+
 INSTALLED_APPS = [
     "django.contrib.admin",
     "django.contrib.auth",
@@ -196,6 +246,67 @@ if TESTING:
         "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"},
     }
     PASSWORD_HASHERS = ["django.contrib.auth.hashers.MD5PasswordHasher"]
+
+# --- Logging ---
+# Without this, Django prints errors only when DEBUG is True, so a production 500 leaves
+# no record anywhere. Every record goes to stderr (the journal, under systemd) and, when
+# LOG_FILE is set, to that file as well; LOG_FILE is required in production.
+# config.log.RedactingFormatter adds the request (method, path, status, user, ip; never
+# the query string, body or cookies) and scrubs secrets and passwords from the whole
+# line, traceback included. SQL is never logged: it can carry tender data.
+LOG_LEVEL = env("LOG_LEVEL", default="INFO").upper()
+LOG_FILE = env("LOG_FILE", default="").strip()
+if PRODUCTION:
+    if not LOG_FILE:
+        raise ImproperlyConfigured("LOG_FILE is not set. In production set it, e.g. LOG_FILE=/var/log/iea/app.log")
+    if not Path(LOG_FILE).parent.is_dir():
+        raise ImproperlyConfigured(f"LOG_FILE's directory does not exist: {Path(LOG_FILE).parent}")
+
+_log_handlers = {
+    "stderr": {"class": "logging.StreamHandler", "formatter": "iea"},
+}
+if LOG_FILE:
+    # A plain FileHandler: logrotate uses copytruncate (docs/DEPLOY.md §7), so the file
+    # never needs reopening. gunicorn workers and cron commands append to the same file.
+    _log_handlers["file"] = {
+        "class": "logging.FileHandler", "filename": LOG_FILE, "formatter": "iea",
+        "encoding": "utf-8", "delay": True,
+    }
+if TESTING:
+    # The test runner provokes 403s, 404s and errors on purpose; keep its output clean.
+    # core/tests/test_settings_environment.py exercises the real configuration in a subprocess.
+    _log_handlers = {"null": {"class": "logging.NullHandler"}}
+_log_to = list(_log_handlers)
+
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "iea": {
+            "()": "config.log.RedactingFormatter",
+            "format": "%(asctime)s %(levelname)s %(name)s pid=%(process)d %(message)s%(request_context)s",
+        },
+    },
+    "handlers": _log_handlers,
+    # Only the root logger has handlers; every other logger just sets its level and
+    # propagates. One place decides where lines go, and nothing is written twice.
+    "root": {"handlers": _log_to, "level": "WARNING"},
+    "loggers": {
+        # 5xx at ERROR with the traceback, 4xx at WARNING (django.request); CSRF failures
+        # and bad Host headers (django.security). handlers=[] drops Django's DEBUG-only
+        # console handler and its mail_admins handler, so these propagate to root.
+        "django": {"handlers": [], "level": "WARNING", "propagate": True},
+        "django.db.backends": {"handlers": [], "level": "WARNING", "propagate": True},
+        # runserver's request lines (development only; gunicorn does not use it). Without
+        # this, re-configuring "django" would silence the 200s in the dev console.
+        "django.server": {"handlers": [], "level": "INFO", "propagate": True},
+        **{
+            app: {"handlers": [], "level": LOG_LEVEL, "propagate": True}
+            for app in ("core", "accounts", "documents", "suppliers", "tenders", "items", "audits",
+                        "approvals", "postaward", "comms", "tasks", "dashboards")
+        },
+    },
+}
 
 # --- Email ---
 # All the SRS automations (T-minus alerts, overdue-task emails, NeST
