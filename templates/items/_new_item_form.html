@@ -1,0 +1,13 @@
+<details class="item-card p-2 p-md-3">
+  <summary class="fw-semibold">Add an item</summary>
+  <form class="mt-2" hx-post="{% url 'items:item_add' tender.pk %}" hx-target="#item-list" hx-swap="beforeend">
+    {% csrf_token %}
+    <div class="item-grid">
+      <div style="grid-column: 1 / -1">{{ new_item_form.specification.label_tag }}{{ new_item_form.specification }}</div>
+      <div>{{ new_item_form.quantity.label_tag }}{{ new_item_form.quantity }}</div>
+      <div>{{ new_item_form.unit_of_measure.label_tag }}{{ new_item_form.unit_of_measure }}</div>
+      <div class="d-flex align-items-end"><button class="btn btn-ink w-100" type="submit">Add</button></div>
+    </div>
+    <div id="new-item-error" class="mt-2" aria-live="polite"></div>
+  </form>
+</details>

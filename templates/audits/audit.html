@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block title %}QC audit — {{ tender.reference }} — IEA Operations{% endblock %}
+{% block content %}
+<div class="mb-2">
+  <div class="mb-1">{% include "tenders/_reference.html" %}</div>
+  <h1 class="h5 mb-1">QC audit: {{ tender.title|default:"(untitled)" }}</h1>
+  <div class="small text-muted">
+    <a href="{% url 'tenders:detail' tender.pk %}">Tender details</a> · <a href="{% url 'items:sheet' tender.pk %}">Item sheet</a> · {{ tender.get_status_display }}
+  </div>
+</div>
+
+{% if not audit %}
+  <div class="card card-body">
+    {% if can_start %}
+      <p class="mb-2">This tender is waiting for a QC audit. Opening it makes one line per item, with what the tender requires on the left and, where the PM selected a quote, what that supplier offered on the right.</p>
+      <form method="post" action="{% url 'audits:start' tender.pk %}">{% csrf_token %}<button class="btn btn-ink" type="submit">Start the audit</button></form>
+    {% elif refusal %}
+      <p class="mb-0 flag" role="alert">{{ refusal }}</p>
+    {% else %}
+      <p class="mb-0 text-muted">No audit has been opened for this tender{% if tender.status != "PENDING_AUDIT" %}; it is {{ tender.get_status_display|lower }}{% endif %}.</p>
+    {% endif %}
+  </div>
+{% else %}
+
+  {% if audit.is_complete %}
+  <div class="card card-body mb-3 {% if audit.verdict == 'NEGATIVE' %}border-danger{% endif %}">
+    <div class="d-flex justify-content-between align-items-start gap-2">
+      <div>
+        <div class="small text-muted">Audit by {{ audit.auditor.get_full_name|default:audit.auditor.email }}, {{ audit.completed_at|date:"j M Y, H:i" }}</div>
+        <div class="h5 mb-0 {% if audit.verdict == 'NEGATIVE' %}flag{% endif %}">{% if audit.verdict == "POSITIVE" %}Positive: every line complies{% else %}Negative: returned to costing{% endif %}</div>
+      </div>
+    </div>
+    {% if audit.reason %}<div class="mt-2 small" style="white-space:pre-wrap"><strong>Reason</strong><br>{{ audit.reason }}</div>{% endif %}
+  </div>
+  {% if can_start %}
+  <div class="card card-body mb-3"><p class="mb-2">The tender is back in audit after being corrected. A new audit re-checks every line.</p>
+    <form method="post" action="{% url 'audits:start' tender.pk %}">{% csrf_token %}<button class="btn btn-ink" type="submit">Start a new audit</button></form></div>
+  {% elif refusal %}<p class="flag" role="alert">{{ refusal }}</p>{% endif %}
+  {% else %}
+  <div class="sheet-bar">{% include "audits/_summary.html" %}</div>
+  {% endif %}
+
+  <nav class="filter-tabs mb-3" aria-label="Filter lines">
+    {% for key, label, n in filters %}
+    <a class="btn btn-sm btn-outline-ink{% if key == show %} active{% endif %}" href="?show={{ key }}">{{ label }}{% if key == "all" or key == "flagged" %} <span class="num">{{ n }}</span>{% endif %}</a>
+    {% endfor %}
+  </nav>
+
+  <div id="audit-lines">
+  {% for line in lines %}
+    {% include "audits/_line.html" %}
+  {% empty %}
+    <p class="text-muted">Nothing here.</p>
+  {% endfor %}
+  </div>
+
+  {% if can_edit %}{% include "audits/_complete.html" %}{% endif %}
+
+  {% if past_audits %}
+  <h2 class="h6 mt-4">Earlier audits of this tender</h2>
+  <ul class="small">{% for a in past_audits %}<li>{{ a.completed_at|date:"j M Y" }}: {{ a.get_verdict_display }} ({{ a.auditor.get_full_name|default:a.auditor.email }}){% if a.reason %} — {{ a.reason|truncatechars:120 }}{% endif %}</li>{% endfor %}</ul>
+  {% endif %}
+{% endif %}
+{% endblock %}

@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}QC audits — IEA Operations{% endblock %}
+{% block content %}
+<h1 class="h4 mb-1">QC audits</h1>
+<p class="text-muted small">Tenders whose PM has submitted a fully priced item sheet and is waiting for the audit. Nothing is submitted to the MD until it is complete.</p>
+
+{% for t in waiting %}
+<a class="card text-decoration-none mb-2" href="{% url 'audits:detail' t.pk %}">
+  <div class="card-body py-2">
+    <div class="d-flex justify-content-between gap-2 align-items-baseline">
+      <span class="ref">{{ t.reference }}</span>
+      <span class="days{% if t.days_left is not None and t.days_left <= 3 %} soon{% endif %} small">{% if t.days_left is None %}no deadline{% elif t.days_left < 0 %}deadline passed{% elif t.days_left == 0 %}due today{% else %}{{ t.days_left }} day{{ t.days_left|pluralize }} left{% endif %}</span>
+    </div>
+    <div>{{ t.title|default:"(untitled)" }}</div>
+    <div class="small text-muted">{{ t.client.name|default:"" }} · PM {{ t.project_manager.get_full_name|default:t.project_manager.email }} · <span class="num">{{ t.items_total }}</span> item{{ t.items_total|pluralize }}</div>
+    <div class="small mt-1">
+      {% if t.open_audit %}In progress with {{ t.open_audit.auditor.get_full_name|default:t.open_audit.auditor.email }}
+      {% elif t.refusal %}<span class="flag">{{ t.refusal }}</span>
+      {% else %}<strong>Ready to start</strong>{% endif %}
+    </div>
+  </div>
+</a>
+{% empty %}
+<p class="text-muted">No tender is waiting for audit.</p>
+{% endfor %}
+{% endblock %}

@@ -27,11 +27,31 @@
   {% endif %}
   {% if user.role == "EXEC" %}
   <div class="col-12 col-md-4">
-    <a class="card h-100 text-decoration-none needs-md-panel" href="{% url 'approvals:registration_queue' %}">
-      <div class="card-body">
-        <h2 class="h6 card-title needs-md">Registration approvals</h2>
-        <p class="card-text text-muted small mb-0">Tenders waiting for your decision to pursue.</p>
-      </div>
+    <a class="card h-100 text-decoration-none" href="{% url 'approvals:registration_queue' %}">
+      <div class="card-body"><h2 class="h6 card-title">Registration approvals</h2>
+        <p class="card-text text-muted small mb-0">Tenders waiting for your decision to pursue.</p></div>
+    </a>
+  </div>
+  <div class="col-12 col-md-4">
+    <a class="card h-100 text-decoration-none" href="{% url 'approvals:submission_queue' %}">
+      <div class="card-body"><h2 class="h6 card-title">Submission approvals</h2>
+        <p class="card-text text-muted small mb-0">Audited bids waiting for your signature.</p></div>
+    </a>
+  </div>
+  {% endif %}
+  {% if user.role == "AUDIT" or user.role == "EXEC" or user.role == "HOPS" %}
+  <div class="col-12 col-md-4">
+    <a class="card h-100 text-decoration-none" href="{% url 'audits:queue' %}">
+      <div class="card-body"><h2 class="h6 card-title">QC audits</h2>
+        <p class="card-text text-muted small mb-0">Item sheets waiting for compliance review.</p></div>
+    </a>
+  </div>
+  {% endif %}
+  {% if user.role == "PM" or user.role == "EXEC" or user.role == "FIN" or user.role == "HOPS" %}
+  <div class="col-12 col-md-4">
+    <a class="card h-100 text-decoration-none" href="{% url 'approvals:fund_list' %}">
+      <div class="card-body"><h2 class="h6 card-title">Fund requests</h2>
+        <p class="card-text text-muted small mb-0">NeST fees and other money a tender needs.</p></div>
     </a>
   </div>
   {% endif %}

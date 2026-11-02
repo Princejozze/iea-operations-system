@@ -1,0 +1,18 @@
+{# The close-out panel. Its button enables itself as the last line is decided (re-sent out-of-band). #}
+<section id="audit-complete" class="card card-body mt-4"{% if oob %} hx-swap-oob="true"{% endif %}>
+  <h2 class="h6">Complete the audit</h2>
+  <p class="small text-muted mb-2">
+    {% if undecided %}<span class="num">{{ undecided }}</span> line{{ undecided|pluralize }} still need a verdict.
+    {% elif negative %}<span class="num">{{ negative }}</span> line{{ negative|pluralize }} do not comply. The audit will be <strong>negative</strong>: the tender returns to costing, exchange rates unlock, and the PM is told why.
+    {% else %}Every line complies. The audit will be <strong>positive</strong> and the tender goes to the MD for submission approval.{% endif %}
+  </p>
+  <form method="post" action="{% url 'audits:complete' tender.pk %}" data-confirm="Complete the audit? This cannot be undone.">
+    {% csrf_token %}
+    {% if negative %}
+    <label class="form-label small fw-semibold" for="id_reason">{{ complete_form.reason.label }}</label>
+    {{ complete_form.reason }}
+    <div class="form-text mb-2">{{ complete_form.reason.help_text }}</div>
+    {% endif %}
+    <button class="btn btn-ink" type="submit"{% if undecided %} disabled{% endif %}>Complete audit</button>
+  </form>
+</section>

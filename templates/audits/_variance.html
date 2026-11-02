@@ -1,0 +1,9 @@
+{# Flagged differences. A flag, never a verdict: the sentence is the model's own, the decision is the auditor's. #}
+<div id="line-{{ line.pk }}-variance"{% if oob %} hx-swap-oob="true"{% endif %}>
+  {% for f in line.flags %}
+  <div class="variance">
+    <span class="small text-uppercase flag">{% if f.kind == "DIFFERENCE" %}Differs{% else %}Check by hand{% endif %}</span>
+    <strong>{{ f.label }}</strong>: <span class="num">{{ f.text }}</span>
+  </div>
+  {% endfor %}
+</div>

@@ -1,0 +1,5 @@
+<div id="line-{{ line.pk }}-state" class="item-state{% if errors %} err{% endif %}" aria-live="polite"{% if oob %} hx-swap-oob="true"{% endif %}>
+  {% if errors %}{% for e in errors %}<div role="alert">{{ e }}</div>{% endfor %}
+  {% elif state %}<span class="text-muted">{{ state }}</span>{% endif %}
+  <span class="saving">Saving…</span>
+</div>

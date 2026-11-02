@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}Submission — {{ tender.reference }} — IEA Operations{% endblock %}
+{% block content %}
+<div class="mb-3">
+  <div class="mb-1">{% include "tenders/_reference.html" %}</div>
+  <h1 class="h4 mb-1">{{ tender.title }}</h1>
+  <div class="small text-muted">{{ tender.client.name }} · <span class="ref">{{ tender.official_reference }}</span> · PM {{ tender.project_manager.get_full_name|default:tender.project_manager.email }}</div>
+</div>
+
+<div class="card mb-3">
+  <div class="card-body">
+    <h2 class="h6">The bid you are signing for</h2>
+    <dl class="summary-grid mb-2">
+      <dt class="fw-normal text-muted">Items</dt><dd><span class="num">{{ summary.items_priced }}</span> of <span class="num">{{ summary.items_total }}</span> priced</dd>
+      <dt class="fw-normal">Bid value, excluding VAT</dt><dd>TZS {{ summary.subtotal|floatformat:"0g" }}</dd>
+      <dt class="fw-normal">VAT{% if summary.vat_percent %} ({{ summary.vat_percent|floatformat:"-2" }}%){% endif %}</dt><dd>TZS {{ summary.vat|floatformat:"0g" }}</dd>
+      <dt class="total">Total tender price</dt><dd class="total">TZS {{ summary.total|floatformat:"0g" }}</dd>
+    </dl>
+    <div class="small text-muted">Exchange rates locked {{ tender.exchange_rate_locked_at|date:"j M Y, H:i" }}.
+      <a href="{% url 'items:sheet' tender.pk %}">Open the item sheet</a></div>
+  </div>
+</div>
+
+<div class="card mb-3">
+  <div class="card-body">
+    <h2 class="h6">Checks before you</h2>
+    <ul class="list-unstyled small mb-0">
+      <li class="mb-2"><strong>QC audit:</strong>
+        {% if audit %}positive, by {{ audit.auditor.get_full_name|default:audit.auditor.email }} on {{ audit.completed_at|date:"j M Y" }}.
+          {{ audit_lines }} line{{ audit_lines|pluralize }} reviewed{% if audit_flagged %}; the system flagged a numeric difference on <span class="num">{{ audit_flagged }}</span> of them and the auditor passed them{% endif %}.
+          <a href="{% url 'audits:detail' tender.pk %}">Read the audit</a>
+        {% else %}<span class="flag">No completed audit is on record.</span>{% endif %}</li>
+      <li class="mb-2"><strong>NeST account:</strong>
+        {% if has_nest_funds %}funded: the application fee is paid.
+        {% else %}<span class="flag">not funded yet.</span> The bid cannot be submitted until the application fee is paid (R17). Approving now is still possible; it waits on Finance.{% endif %}
+        {% for fr in funds %}<div class="text-muted">{{ fr.get_purpose_display }}: {{ fr.amount|floatformat:"-2g" }} {{ fr.currency }} — {{ fr.get_status_display }}</div>{% endfor %}</li>
+      <li><strong>Deadline:</strong> {{ tender.submission_deadline|date:"j M Y, H:i" }}{% if days_left is not None %} ({% if days_left < 0 %}passed{% elif days_left == 0 %}today{% else %}{{ days_left }} day{{ days_left|pluralize }} left{% endif %}){% endif %}</li>
+    </ul>
+  </div>
+</div>
+
+<div class="card needs-md-panel mb-4">
+  <div class="card-body">
+    <h2 class="h6 needs-md">Your decision</h2>
+    <p class="small text-muted">Declining returns the tender to costing with exchange rates unlocked. The PM is told your reason and corrects it; it is never a dead end.</p>
+    {% include "approvals/_decision_form.html" with question="Submit this bid?" approve_label="Approve — submit it" decline_label="Decline — back to costing" %}
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,6 @@
+<div class="form-check">
+  {{ f }}
+  <label class="form-check-label" for="{{ f.id_for_label }}">{{ f.label }}</label>
+</div>
+{% if f.help_text %}<div class="form-text">{{ f.help_text }}</div>{% endif %}
+{% for e in f.errors %}<div class="flag small" role="alert">{{ e }}</div>{% endfor %}

@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block title %}Quotes — {{ item.item_reference }} — IEA Operations{% endblock %}
+{% block content %}
+<div class="mb-3">
+  <div class="mb-1">{% include "tenders/_reference.html" %}</div>
+  <a class="small" href="{% url 'items:sheet' tender.pk %}#item-{{ item.pk }}">&larr; Back to the item sheet</a>
+  <h1 class="h5 mt-2 mb-1">Quotes for item <span class="item-no" style="font-size:1rem">#{{ item.item_reference|slice:"-3:" }}</span></h1>
+  <p class="mb-1" style="overflow-wrap:anywhere">{{ item.specification }}</p>
+  <div class="small text-muted"><span class="num">{{ item.quantity }}</span> {{ item.unit_of_measure|default:"units" }}
+    {% if item.total_selling_price_tzs is not None %} · costed at <span class="num">TZS {{ item.unit_selling_price_tzs|floatformat:"0g" }}</span> per unit{% endif %}</div>
+</div>
+
+<h2 class="h6">{{ quotes|length }} quote{{ quotes|length|pluralize }}</h2>
+{% for q in quotes %}
+<article class="quote-card p-2 p-md-3{% if q.status == 'SELECTED' %} is-selected{% elif q.status == 'REJECTED' %} is-rejected{% endif %}">
+  <div class="d-flex justify-content-between align-items-start gap-2">
+    <div style="min-width:0">
+      <div class="fw-semibold">{{ q.supplier.name }}{% if q.supplier.country %} <span class="text-muted fw-normal small">· {{ q.supplier.country }}</span>{% endif %}</div>
+      <div class="num text-start fs-5">{{ q.quoted_unit_price|floatformat:"-2g" }} <span class="fs-6">{{ q.currency }}</span> <span class="small text-muted">{{ q.incoterm }}{% if not q.shipping_applies %}, local{% endif %}</span></div>
+    </div>
+    <span class="badge {% if q.status == 'SELECTED' %}badge-selected{% else %}badge-status{% endif %}">{{ q.get_status_display }}</span>
+  </div>
+  <dl class="small row g-0 mt-2 mb-1">
+    {% if q.make_brand or q.model_part_number %}<dt class="col-4 col-md-2 text-muted fw-normal">Offered</dt><dd class="col-8 col-md-4">{{ q.make_brand }} {{ q.model_part_number }}</dd>{% endif %}
+    {% if q.country_of_origin %}<dt class="col-4 col-md-2 text-muted fw-normal">Origin</dt><dd class="col-8 col-md-4">{{ q.country_of_origin }}</dd>{% endif %}
+    {% if q.lead_time_days is not None %}<dt class="col-4 col-md-2 text-muted fw-normal">Lead time</dt><dd class="col-8 col-md-4">{{ q.lead_time_days }} days</dd>{% endif %}
+    {% if q.valid_until %}<dt class="col-4 col-md-2 text-muted fw-normal">Valid until</dt><dd class="col-8 col-md-4 {% if q.valid_until < today %}flag{% endif %}">{{ q.valid_until|date:"j M Y" }}{% if q.valid_until < today %} (expired){% endif %}</dd>{% endif %}
+    <dt class="col-4 col-md-2 text-muted fw-normal">Received</dt><dd class="col-8 col-md-4">{{ q.received_at|date:"j M Y" }}</dd>
+    <dt class="col-4 col-md-2 text-muted fw-normal">Original</dt>
+    <dd class="col-8 col-md-4"><a class="ref-link" href="{% url 'items:attachment_download' q.original_document_id %}" target="_blank" rel="noopener">{{ q.original_document.original_filename|default:"quotation" }}</a></dd>
+  </dl>
+  {% if q.specification_offered %}
+  <details class="small"><summary>Specification offered</summary><div class="mt-1" style="white-space:pre-wrap; overflow-wrap:anywhere">{{ q.specification_offered }}</div></details>
+  {% endif %}
+  {% if q.notes %}<div class="small text-muted mt-1">{{ q.notes }}</div>{% endif %}
+  {% if can_edit and q.status != "REJECTED" %}
+  <div class="d-flex gap-2 mt-2">
+    {% if q.status != "SELECTED" %}
+    <form method="post" action="{% url 'items:quote_select' q.pk %}" class="flex-fill flex-md-grow-0">{% csrf_token %}<button class="btn btn-ink w-100" type="submit">Cost the item on this quote</button></form>
+    <form method="post" action="{% url 'items:quote_reject' q.pk %}" data-confirm="Set this quote aside?">{% csrf_token %}<button class="btn btn-outline-ink" type="submit">Reject</button></form>
+    {% else %}
+    <span class="small text-muted align-self-center">The item is costed on this quote.</span>
+    {% endif %}
+  </div>
+  {% endif %}
+</article>
+{% empty %}
+<p class="text-muted">No quotes yet.</p>
+{% endfor %}
+
+{% if can_edit %}
+<h2 class="h6 mt-4" id="enter">Enter a quote</h2>
+<p class="small text-muted">Two things go in together: the supplier's document as they sent it, and the figures from it. The document is the proof; the figures drive the costing.</p>
+<form method="post" enctype="multipart/form-data" class="card card-body mb-4" novalidate>
+  {% csrf_token %}
+  {% if form.non_field_errors %}<div class="alert alert-danger">{% for e in form.non_field_errors %}<div>{{ e }}</div>{% endfor %}</div>{% endif %}
+  <div class="row g-3">
+    <div class="col-12 col-md-6">{% include "items/_form_field.html" with f=form.supplier %}</div>
+    <div class="col-12 col-md-6">{% include "items/_form_field.html" with f=form.new_supplier_name %}</div>
+    <div class="col-12">{% include "items/_form_field.html" with f=form.original_document %}</div>
+    <div class="col-6 col-md-3">{% include "items/_form_field.html" with f=form.quoted_unit_price %}</div>
+    <div class="col-6 col-md-3">{% include "items/_form_field.html" with f=form.currency %}</div>
+    <div class="col-6 col-md-3">{% include "items/_form_field.html" with f=form.incoterm %}</div>
+    <div class="col-6 col-md-3">{% include "items/_form_field.html" with f=form.lead_time_days %}</div>
+    <div class="col-12">{% include "items/_form_check.html" with f=form.shipping_applies %}</div>
+    <div class="col-12 col-md-4">{% include "items/_form_field.html" with f=form.make_brand %}</div>
+    <div class="col-12 col-md-4">{% include "items/_form_field.html" with f=form.model_part_number %}</div>
+    <div class="col-12 col-md-4">{% include "items/_form_field.html" with f=form.country_of_origin %}</div>
+    <div class="col-12">{% include "items/_form_field.html" with f=form.specification_offered %}</div>
+    <div class="col-12 col-md-4">{% include "items/_form_field.html" with f=form.valid_until %}</div>
+    <div class="col-12 col-md-8">{% include "items/_form_field.html" with f=form.notes %}</div>
+    <div class="col-12">{% include "items/_form_check.html" with f=form.select_now %}</div>
+    <div class="col-12"><button class="btn btn-ink w-100 w-md-auto" type="submit">Save quote</button></div>
+  </div>
+</form>
+{% else %}
+<p class="small text-muted mt-3">Quotes are entered by the tender's PM while it is in drafting or costing.</p>
+{% endif %}
+{% endblock %}

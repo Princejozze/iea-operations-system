@@ -1,0 +1,16 @@
+<input type="hidden" name="more_loaded" value="1">
+<div class="item-grid">
+  <div style="grid-column: 1 / -1">{{ form.specification.label_tag }}{{ form.specification }}</div>
+  <div>{{ form.unit_of_measure.label_tag }}{{ form.unit_of_measure }}</div>
+  <div class="span-2">{{ form.category.label_tag }}{{ form.category }}</div>
+  <div class="span-2">{{ form.make_brand.label_tag }}{{ form.make_brand }}</div>
+  <div class="span-2">{{ form.model_part_number.label_tag }}{{ form.model_part_number }}</div>
+  <div class="span-2">{{ form.country_of_origin.label_tag }}{{ form.country_of_origin }}</div>
+  <div class="span-2">{{ form.sourcing_type.label_tag }}{{ form.sourcing_type }}</div>
+  <div>{{ form.local_unit_cost.label_tag }}{{ form.local_unit_cost }}</div>
+  <div>{{ form.risk_pct.label_tag }}{{ form.risk_pct }}</div>
+  <div>{{ form.labour_hours_per_unit.label_tag }}{{ form.labour_hours_per_unit }}</div>
+  <div class="span-2 d-flex align-items-end">
+    <div class="form-check">{{ form.shipping_applies }}<label class="form-check-label" for="{{ form.shipping_applies.id_for_label }}">Imported (shipping, duty, C&amp;F)</label></div>
+  </div>
+</div>

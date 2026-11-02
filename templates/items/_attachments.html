@@ -1,0 +1,39 @@
+<section id="item-{{ item.pk }}-attachments" class="px-2 px-md-3 pb-2" aria-label="Documents">
+  <div class="small text-muted">Documents: <span class="num">{{ item.held_kinds|length }}</span> of 3 kinds attached</div>
+  {% if attach_errors %}<div class="small flag mt-1" role="alert">{% for e in attach_errors %}{{ e }} {% endfor %}</div>{% endif %}
+  {% if item.attachments.all %}
+  <ul class="list-unstyled small mb-1 mt-1">
+    {% for a in item.attachments.all %}
+    <li class="d-flex justify-content-between align-items-center gap-2 border-top py-1">
+      <a class="text-truncate ref-link" href="{% url 'items:attachment_download' a.pk %}" target="_blank" rel="noopener">{{ a.get_kind_display }} · {{ a.original_filename|default:"file" }}</a>
+      {% if can_edit %}
+      <button type="button" class="btn btn-sm btn-outline-ink py-0" hx-post="{% url 'items:attachment_delete' a.pk %}"
+              hx-target="#item-{{ item.pk }}-attachments" hx-swap="outerHTML"
+              hx-confirm="Remove this document?">Remove</button>
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+  {% if can_edit %}
+  <details class="mt-1">
+    <summary class="small">Attach a document</summary>
+    <form class="row g-2 mt-1" hx-post="{% url 'items:attachment_add' item.pk %}" hx-encoding="multipart/form-data"
+          hx-target="#item-{{ item.pk }}-attachments" hx-swap="outerHTML">
+      <div class="col-12 col-sm-4">
+        <label class="small text-muted" for="a{{ item.pk }}-kind">Kind</label>
+        <select class="form-select" name="kind" id="a{{ item.pk }}-kind">
+          {% for kind, label in item.kinds %}<option value="{{ kind }}"{% if kind not in item.held_kinds and kind == item.first_missing_kind %} selected{% endif %}>{{ label }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="col-12 col-sm-5">
+        <label class="small text-muted" for="a{{ item.pk }}-file">File</label>
+        <input class="form-control" type="file" name="file" id="a{{ item.pk }}-file" required accept=".pdf,.png,.jpg,.jpeg,.doc,.docx,.xls,.xlsx">
+      </div>
+      <div class="col-12 col-sm-3 d-flex align-items-end">
+        <button class="btn btn-ink w-100" type="submit">Attach <span class="saving">…</span></button>
+      </div>
+    </form>
+  </details>
+  {% endif %}
+</section>

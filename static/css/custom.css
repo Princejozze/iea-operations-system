@@ -72,3 +72,106 @@ hr, .border, .border-top, .border-bottom { border-color: var(--iea-rule) !import
   main.container { padding-left: .75rem; padding-right: .75rem; }
   .table-tenders td, .table-tenders th { padding: .4rem .35rem; }
 }
+
+
+/* ------------------------------------------------------------------------
+   Phone fixes found by looking at the screens at 375px.
+   ------------------------------------------------------------------------ */
+@media (max-width: 575.98px) {
+  /* 44px is the least a thumb can hit reliably. */
+  .btn, .form-control, .form-select { min-height: 44px; }
+  .btn-sm { min-height: 40px; padding-left: .75rem; padding-right: .75rem; }
+  .form-check-input { width: 1.5rem; height: 1.5rem; margin-top: .1rem; }
+  .form-check-label { padding-left: .25rem; padding-top: .15rem; }
+  .form-check { min-height: 2.75rem; display: flex; align-items: center; gap: .5rem; padding-left: 0; }
+  .form-check .form-check-input { float: none; margin-left: 0; flex: none; }
+  a.ref-link { display: inline-block; padding: .55rem 0; }
+}
+a.ref-link { text-decoration: underline; text-underline-offset: 2px; }
+
+/* Days left: calm until it matters. Ink first, then flag red inside 3 days. */
+.days { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.days.soon { color: var(--iea-flag); font-weight: 600; }
+
+/* The one non-brass "look here" colour: variance flags, errors, close deadlines. */
+:root { --iea-flag: #9a2a1f; }
+.flag { color: var(--iea-flag); }
+
+/* ------------------------------------------------------------------------
+   Item sheet (items app): cards, not table rows, so it works at 375px.
+   ------------------------------------------------------------------------ */
+.sheet-bar { position: sticky; top: 0; z-index: 10; background: var(--iea-paper);
+  border-bottom: 1px solid var(--iea-rule); margin: 0 -.75rem 1rem; padding: .5rem .75rem; }
+@media (min-width: 576px) { .sheet-bar { margin: 0 -12px 1rem; padding: .5rem 12px; } }
+.meter { height: .4rem; background: var(--iea-rule); border-radius: .2rem; overflow: hidden; }
+.meter > span { display: block; height: 100%; background: var(--iea-ink); }
+
+.item-card { background: var(--iea-card); border: 1px solid var(--iea-rule); border-left: 3px solid var(--iea-rule);
+  border-radius: .35rem; margin-bottom: .6rem; scroll-margin-top: 6.5rem; }
+.item-card.is-priced { border-left-color: var(--iea-ink); }
+.item-card .item-no { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .85rem; color: var(--iea-muted); }
+.item-card .spec { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.item-card details[open] .spec-full { display: block; }
+.item-grid { display: grid; gap: .5rem .6rem; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.item-grid .span-2 { grid-column: span 2; }
+@media (min-width: 768px) { .item-grid { grid-template-columns: repeat(6, minmax(0, 1fr)); } .item-grid .span-2 { grid-column: span 2; } .item-grid .span-3 { grid-column: span 3; } }
+.item-card label { font-size: .75rem; color: var(--iea-muted); margin-bottom: .1rem; }
+.item-card .locked { background: var(--iea-paper); }
+.chip { display: inline-block; font-size: .72rem; line-height: 1; padding: .22rem .45rem; border: 1px solid var(--iea-rule);
+  border-radius: 1rem; color: var(--iea-muted); background: var(--iea-paper); white-space: nowrap; }
+.chip.ok { color: var(--iea-ink); border-color: var(--iea-ink); }
+.chip.bad { color: var(--iea-flag); border-color: var(--iea-flag); background: #fff; }
+.item-state { font-size: .8rem; min-height: 1.2rem; }
+.item-state.err { color: var(--iea-flag); }
+.item-card.htmx-request { opacity: .85; }
+/* "Saving…" shows only while a request is in flight (htmx puts .htmx-request on the form). */
+.saving { display: none; font-size: .75rem; color: var(--iea-muted); }
+.htmx-request .saving, .htmx-request.saving { display: inline; }
+@keyframes saved-flash { from { box-shadow: 0 0 0 2px var(--iea-ink); } to { box-shadow: 0 0 0 0 transparent; } }
+.item-card.just-saved { animation: saved-flash 1.2s ease-out; }
+.filter-tabs { display: flex; gap: .4rem; overflow-x: auto; padding-bottom: .15rem; }
+.filter-tabs .btn { white-space: nowrap; }
+.filter-tabs .btn.active { background: var(--iea-ink); color: #fff; border-color: var(--iea-ink); }
+
+/* ------------------------------------------------------------------------
+   Quotes and QC audit
+   ------------------------------------------------------------------------ */
+.quote-card { background: var(--iea-card); border: 1px solid var(--iea-rule); border-radius: .35rem; margin-bottom: .6rem; }
+.quote-card.is-selected { border: 2px solid var(--iea-ink); }
+.quote-card.is-rejected { opacity: .6; }
+.badge-selected { background: var(--iea-ink); color: #fff; }
+
+/* Required beside offered; stacked with labels on a phone. */
+.pair { display: grid; gap: .6rem; grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 768px) { .pair { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
+.pair .side { background: var(--iea-paper); border: 1px solid var(--iea-rule); border-radius: .3rem; padding: .5rem .65rem; }
+.pair .side h3 { font-size: .72rem; text-transform: uppercase; letter-spacing: .04em; color: var(--iea-muted); margin: 0 0 .25rem; }
+.pair .side .body { white-space: pre-wrap; overflow-wrap: anywhere; font-size: .92rem; }
+.variance { border-left: 3px solid var(--iea-flag); padding: .15rem 0 .15rem .6rem; margin-top: .5rem; font-size: .88rem; }
+.variance .num { font-weight: 600; }
+.audit-line { background: var(--iea-card); border: 1px solid var(--iea-rule); border-left: 3px solid var(--iea-rule); border-radius: .35rem; margin-bottom: .6rem; scroll-margin-top: 6.5rem; }
+.audit-line.decided-pos { border-left-color: var(--iea-ink); }
+.audit-line.decided-neg { border-left-color: var(--iea-flag); }
+.verdict-choice { display: flex; gap: .5rem; flex-wrap: wrap; }
+.verdict-choice label { margin: 0; }
+.verdict-choice input { position: absolute; opacity: 0; pointer-events: none; }
+.verdict-choice span { display: inline-block; padding: .55rem .9rem; border: 1px solid var(--iea-rule); border-radius: .3rem; background: #fff; cursor: pointer; min-height: 44px; font-size: .95rem; color: var(--iea-ink); }
+.verdict-choice input:checked + span.pos { background: var(--iea-ink); color: #fff; border-color: var(--iea-ink); }
+.verdict-choice input:checked + span.neg { background: var(--iea-flag); color: #fff; border-color: var(--iea-flag); }
+.verdict-choice input:focus-visible + span { outline: 2px solid var(--iea-ink); outline-offset: 2px; }
+
+/* Signature and money summaries. */
+.summary-grid { display: grid; gap: .4rem 0; grid-template-columns: 1fr auto; font-variant-numeric: tabular-nums; }
+.summary-grid dd { margin: 0; text-align: right; padding-left: 1rem; }
+.summary-grid .total { font-weight: 700; border-top: 1px solid var(--iea-ink); padding-top: .35rem; }
+
+/* Plain-language "what is stopping this tender" list on the detail page. */
+.gate-list { list-style: none; padding: 0; margin: .5rem 0 0; display: grid; gap: .25rem; }
+.gate-list li { font-size: .9rem; display: flex; justify-content: space-between; gap: 1rem; border-bottom: 1px dotted var(--iea-rule); padding-bottom: .2rem; }
+.gate-list li .n { font-variant-numeric: tabular-nums; font-weight: 600; }
+
+/* Stage strip: one scrollable line on a phone, not four wrapped rows. */
+@media (max-width: 575.98px) {
+  .stages { flex-wrap: nowrap; overflow-x: auto; padding-bottom: .25rem; }
+  .stages li { white-space: nowrap; flex: none; }
+}

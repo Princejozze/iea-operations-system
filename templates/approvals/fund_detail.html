@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}Fund request — {{ tender.reference }} — IEA Operations{% endblock %}
+{% block content %}
+<div class="mb-3">
+  <div class="mb-1">{% include "tenders/_reference.html" %}</div>
+  <a class="small" href="{% url 'approvals:fund_list' %}">&larr; All fund requests</a>
+  <h1 class="h5 mt-2 mb-1">{{ fr.get_purpose_display }}</h1>
+  <div class="small text-muted">{{ tender.title|default:"(untitled)" }}{% if tender.client %} · {{ tender.client.name }}{% endif %}</div>
+</div>
+
+<div class="card mb-3">
+  <div class="card-body">
+    <div class="d-flex justify-content-between align-items-baseline gap-2">
+      <div class="num fs-4 fw-semibold">{{ fr.amount|floatformat:"-2g" }} <span class="fs-6">{{ fr.currency }}</span></div>
+      <span class="badge badge-status">{{ fr.get_status_display }}</span>
+    </div>
+    <dl class="small row g-0 mt-2 mb-0">
+      <dt class="col-5 col-md-3 text-muted fw-normal">Asked by</dt><dd class="col-7 col-md-9">{{ fr.requested_by.get_full_name|default:fr.requested_by.email }}, {{ fr.requested_at|date:"j M Y, H:i" }}</dd>
+      {% if fr.decided_by %}<dt class="col-5 col-md-3 text-muted fw-normal">Decided by</dt><dd class="col-7 col-md-9">{{ fr.decided_by.get_full_name|default:fr.decided_by.email }}, {{ fr.decided_at|date:"j M Y, H:i" }}</dd>{% endif %}
+      {% if fr.decision_reason %}<dt class="col-5 col-md-3 text-muted fw-normal">Reason</dt><dd class="col-7 col-md-9" style="white-space:pre-wrap">{{ fr.decision_reason }}</dd>{% endif %}
+      {% if fr.paid_by %}<dt class="col-5 col-md-3 text-muted fw-normal">Paid by</dt><dd class="col-7 col-md-9">{{ fr.paid_by.get_full_name|default:fr.paid_by.email }}, {{ fr.paid_at|date:"j M Y, H:i" }}</dd>
+      <dt class="col-5 col-md-3 text-muted fw-normal">Reference</dt><dd class="col-7 col-md-9 ref">{{ fr.payment_reference }}</dd>{% endif %}
+      {% if fr.notes %}<dt class="col-5 col-md-3 text-muted fw-normal">Notes</dt><dd class="col-7 col-md-9" style="white-space:pre-wrap">{{ fr.notes }}</dd>{% endif %}
+    </dl>
+  </div>
+</div>
+
+{% if is_nest_fee %}
+<p class="small {% if has_nest_funds %}text-muted{% endif %}">
+  {% if has_nest_funds %}The NeST account is funded for this tender.{% else %}Until this is paid the bid cannot be submitted (R17).{% endif %}
+</p>
+{% endif %}
+
+{% if decision_form %}
+<div class="card needs-md-panel mb-4">
+  <div class="card-body">
+    <h2 class="h6 needs-md">Your decision</h2>
+    <form method="post" action="{% url 'approvals:fund_decide' fr.pk %}" novalidate>
+      {% csrf_token %}
+      <div class="verdict-choice mb-3">
+        {% for choice in decision_form.decision %}
+        <label><input type="radio" name="decision" value="{{ choice.data.value }}" required><span class="{% if choice.data.value == 'APPROVE' %}pos{% else %}neg{% endif %}">{{ choice.choice_label }}</span></label>
+        {% endfor %}
+      </div>
+      {% include "items/_form_field.html" with f=decision_form.reason %}
+      <button type="submit" class="btn btn-needs-md w-100 mt-3">Record decision</button>
+    </form>
+  </div>
+</div>
+{% endif %}
+
+{% if paid_form %}
+<div class="card mb-4">
+  <div class="card-body">
+    <h2 class="h6">Mark as paid</h2>
+    <p class="small text-muted">Approved by the Managing Director. Enter the reference once the money has left the account.</p>
+    <form method="post" action="{% url 'approvals:fund_pay' fr.pk %}" novalidate>
+      {% csrf_token %}
+      {% include "items/_form_field.html" with f=paid_form.payment_reference %}
+      <button type="submit" class="btn btn-ink w-100 mt-3">Mark as paid</button>
+    </form>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

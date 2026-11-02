@@ -21,9 +21,6 @@
       {% if gate.needs_md %}Needs the MD{% else %}Next: {{ gate.who }}{% endif %}
     </div>
     <div class="fw-semibold">{{ gate.text }}</div>
-    {% if gate.details %}
-    <ul class="small mb-0 mt-1">{% for d in gate.details %}<li>{{ d }}</li>{% endfor %}</ul>
-    {% endif %}
     <div class="mt-2 d-flex flex-wrap gap-2">
       {% if tender.status == "PENDING_VERIFICATION" and is_pm %}
         <a class="btn btn-ink" href="{% url 'tenders:verify' tender.pk %}">Verify extracted fields</a>
@@ -31,6 +28,15 @@
       {% if tender.status == "PENDING_REGISTRATION_APPROVAL" and is_md %}
         <a class="btn btn-needs-md" href="{% url 'approvals:registration_decide' tender.pk %}">Decide registration</a>
       {% endif %}
+      {% if tender.status == "PENDING_EXECUTIVE_APPROVAL" and is_md %}
+        <a class="btn btn-needs-md" href="{% url 'approvals:submission_decide' tender.pk %}">Decide submission</a>
+      {% endif %}
+      {% if tender.status == "PENDING_AUDIT" and user.role == "AUDIT" %}
+        <a class="btn btn-ink" href="{% url 'audits:detail' tender.pk %}">Open the QC audit</a>
+      {% endif %}
+      {% if tender.status == "DRAFTING" or tender.status == "COSTING" %}{% if is_pm %}
+        <a class="btn btn-ink" href="{% url 'items:sheet' tender.pk %}">{% if tender.status == "DRAFTING" %}Check the item sheet{% else %}Open the item sheet{% endif %}</a>
+      {% endif %}{% endif %}
     </div>
   </div>
 </div>
@@ -53,7 +59,7 @@
     <div class="card h-100"><div class="card-body p-2">
       <div class="small text-muted">Days to deadline</div>
       <div class="fw-semibold num text-center">
-        {% if days_left is None %}—{% elif closed %}{{ days_left }}{% elif days_left < 0 %}<span class="text-danger">passed</span>{% else %}{{ days_left }}{% endif %}
+        {% if days_left is None %}—{% elif closed %}{{ days_left }}{% elif days_left < 0 %}<span class="flag">passed</span>{% else %}<span class="days{% if days_left <= 3 %} soon{% endif %}">{{ days_left }}</span>{% endif %}
       </div>
     </div></div>
   </div>
@@ -65,6 +71,26 @@
   <li class="{% if s.current %}current{% elif s.done %}done{% endif %}"{% if s.current %} aria-current="step"{% endif %}>{{ s.label }}</li>
   {% endfor %}
 </ol>
+{% endif %}
+
+{# Where the work is: the item sheet and the audit, for whoever may read them; the money. #}
+<div class="d-flex flex-wrap gap-2 mb-3">
+  {% if can_read_sheet and items_total and not gate_has_sheet_button %}<a class="btn btn-sm btn-outline-ink" href="{% url 'items:sheet' tender.pk %}">Item sheet <span class="num">({{ items_priced }}/{{ items_total }})</span></a>{% endif %}
+  {% if can_read_audit and has_audit %}<a class="btn btn-sm btn-outline-ink" href="{% url 'audits:detail' tender.pk %}">QC audit</a>{% endif %}
+  {% if is_pm and can_request_funds %}<a class="btn btn-sm btn-outline-ink" href="{% url 'approvals:fund_new' tender.pk %}">Request funds</a>{% endif %}
+</div>
+
+{% if fund_requests %}
+<div class="card mb-3">
+  <div class="card-body">
+    <h2 class="h6">Funds</h2>
+    <ul class="list-unstyled small mb-1">
+      {% for fr in fund_requests %}<li class="py-1 {% if not forloop.first %}border-top{% endif %}"><a href="{% url 'approvals:fund_detail' fr.pk %}">{{ fr.get_purpose_display }}</a>
+        · <span class="num">{{ fr.amount|floatformat:"-2g" }} {{ fr.currency }}</span> · {{ fr.get_status_display }}</li>{% endfor %}
+    </ul>
+    <div class="small {% if tender.has_nest_funds %}text-muted{% else %}text-muted{% endif %}">{% if tender.has_nest_funds %}The NeST account is funded.{% else %}The NeST account is not funded yet (R17).{% endif %}</div>
+  </div>
+</div>
 {% endif %}
 
 <div class="card mb-3">

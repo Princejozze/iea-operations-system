@@ -105,8 +105,9 @@ def blocking_gate(tender, *, items_total=None, items_priced=None):
         blockers = tender.r2_blockers()
         if blockers:
             unpriced = (items_total or 0) - (items_priced or 0)
-            head = f"{unpriced} item(s) unpriced." if unpriced else "Items incomplete for audit."
-            return Gate(f"{head} QC audit is blocked (R2).", "PM", tuple(blockers))
+            head = (f"{unpriced} of {items_total} items have no price yet." if unpriced
+                    else "Some items still need details or documents.")
+            return Gate(f"{head} The QC audit cannot start until the item sheet is complete.", "PM", tuple(blockers))
         return Gate("Complete — ready for the PM to submit to QC audit.", "PM")
     if st == S.PENDING_AUDIT:
         return Gate("Awaiting the QC audit verdict.", "Auditor")
@@ -193,6 +194,19 @@ def _detail_context(request, tender):
         "is_md": request.user.role == Role.EXECUTIVE,
         # RelatedObjectDoesNotExist is an AttributeError, so getattr's default applies.
         "extraction": getattr(tender, "extraction", None),
+        # Reverse accessors, never imports (§1): items, audits and approvals live below this app.
+        # The PM already has an "Open the item sheet" button in the gate card while drafting or costing.
+        "gate_has_sheet_button": tender.project_manager_id == request.user.pk and tender.status in (S.DRAFTING, S.COSTING),
+        "can_read_sheet": request.user.role in (Role.EXECUTIVE, Role.HEAD_OF_OPERATIONS, Role.PROJECT_MANAGER, Role.AUDITOR),
+        "can_read_audit": request.user.role in (Role.EXECUTIVE, Role.HEAD_OF_OPERATIONS, Role.AUDITOR)
+        or (request.user.role == Role.PROJECT_MANAGER and tender.project_manager_id == request.user.pk),
+        "has_audit": tender.qc_audits.exists() if hasattr(tender, "qc_audits") else False,
+        "can_request_funds": tender.status in (S.DRAFTING, S.COSTING, S.PENDING_ELIGIBILITY_DECISION, S.PENDING_AUDIT,
+                                               S.PENDING_EXECUTIVE_APPROVAL, S.READY_TO_SUBMIT),
+        "fund_requests": (list(tender.fund_requests.all())
+                          if hasattr(tender, "fund_requests") and request.user.role in (
+                              Role.EXECUTIVE, Role.FINANCE, Role.HEAD_OF_OPERATIONS)
+                          or (hasattr(tender, "fund_requests") and tender.project_manager_id == request.user.pk) else []),
     }
 
 

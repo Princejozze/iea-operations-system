@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Upload quote sheet — {{ tender.reference }} — IEA Operations{% endblock %}
+{% block content %}
+<div class="mb-3">
+  <div class="mb-1">{% include "tenders/_reference.html" %}</div>
+  <a class="small" href="{% url 'items:sheet' tender.pk %}">&larr; Back to the item sheet</a>
+  <h1 class="h5 mt-2">Upload a filled quote sheet</h1>
+  <p class="small text-muted">One sheet is one supplier and one original quotation. Every row is checked; if any row fails, nothing is imported and you upload the corrected sheet again.</p>
+</div>
+
+{% if result and not result.ok %}
+<div class="alert alert-danger" role="alert">
+  <strong>Nothing was imported.</strong> Fix these {{ result.errors|length }} problem{{ result.errors|length|pluralize }} in the sheet and upload it again:
+  <ul class="mb-0 mt-1">{% for e in result.errors %}<li>{{ e }}</li>{% endfor %}</ul>
+</div>
+{% endif %}
+
+<form method="post" enctype="multipart/form-data" class="card card-body" novalidate>
+  {% csrf_token %}
+  {% if form.non_field_errors %}<div class="alert alert-danger">{% for e in form.non_field_errors %}<div>{{ e }}</div>{% endfor %}</div>{% endif %}
+  <div class="row g-3">
+    <div class="col-12 col-md-6">{% include "items/_form_field.html" with f=form.supplier %}</div>
+    <div class="col-12">{% include "items/_form_field.html" with f=form.sheet %}</div>
+    <div class="col-12">{% include "items/_form_field.html" with f=form.original_document %}</div>
+    <div class="col-12"><button class="btn btn-ink" type="submit">Import quotes</button></div>
+  </div>
+</form>
+{% endblock %}

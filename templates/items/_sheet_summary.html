@@ -1,0 +1,15 @@
+{# The sticky bar: progress and the bid total. Rendered in place, and again out-of-band after every edit. #}
+<div id="sheet-summary"{% if oob %} hx-swap-oob="true"{% endif %}>
+  <div class="d-flex justify-content-between align-items-baseline gap-2 flex-wrap">
+    <div>
+      <span class="num fw-semibold">{{ summary.items_priced }}</span> of <span class="num">{{ summary.items_total }}</span> priced
+      {% if summary.items_total and not_ready %}<span class="text-muted small d-none d-sm-inline"> · {{ not_ready }} not ready for audit</span>{% endif %}
+    </div>
+    <div class="small text-end">
+      Bid <span class="num fw-semibold">TZS {{ summary.total|floatformat:"0g" }}</span>
+      <span class="text-muted">incl. {{ summary.vat_percent|default:"18"|floatformat:"-2" }}% VAT</span>
+    </div>
+  </div>
+  <div class="meter mt-1" role="progressbar" aria-valuenow="{{ summary.percent_priced }}" aria-valuemin="0" aria-valuemax="100"
+       aria-label="Items priced"><span style="width: {{ summary.percent_priced }}%"></span></div>
+</div>

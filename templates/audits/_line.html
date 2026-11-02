@@ -1,0 +1,57 @@
+{# One audit line: REQUIRED beside OFFERED, flagged variance under them, then the verdict. #}
+<article class="audit-line{% if line.verdict == 'POSITIVE' %} decided-pos{% elif line.verdict == 'NEGATIVE' %} decided-neg{% endif %}" id="line-{{ line.pk }}">
+  <div class="p-2 p-md-3">
+    <div class="d-flex justify-content-between align-items-baseline gap-2 mb-2">
+      <div>
+        <span class="item-no" title="{{ line.item.item_reference }}">#{{ line.item.item_reference|slice:"-3:" }}</span>
+        <span class="small text-muted"> · <span class="num">{{ line.item.quantity }}</span> {{ line.item.unit_of_measure|default:"units" }}</span>
+      </div>
+      <div class="small text-muted text-end" style="min-width:0">
+        {% if line.item.make_brand or line.item.model_part_number %}{{ line.item.make_brand }} {{ line.item.model_part_number }}{% endif %}
+        {% if line.item.supplier %}<span class="d-none d-sm-inline"> · {{ line.item.supplier }}</span>{% endif %}
+      </div>
+    </div>
+
+    {% if can_edit %}
+    <form id="lf-{{ line.pk }}" hx-post="{% url 'audits:line_save' line.pk %}" hx-trigger="change" hx-swap="none" hx-sync="this:queue last">
+    {% endif %}
+      <div class="pair">
+        <div class="side">
+          <h3>Required by the tender</h3>
+          <div class="body">{{ line.specification_required }}</div>
+        </div>
+        <div class="side">
+          <h3><label for="l{{ line.pk }}-specification_offered" class="m-0" style="font-size:inherit; text-transform:inherit; letter-spacing:inherit; color:inherit">Offered by the supplier</label></h3>
+          {% if can_edit %}{{ line.form.specification_offered }}
+          {% else %}<div class="body">{{ line.specification_offered|default:"Nothing recorded." }}</div>{% endif %}
+        </div>
+      </div>
+
+      {% include "audits/_variance.html" %}
+
+      {% if can_edit %}
+      <fieldset class="mt-3">
+        <legend class="small fw-semibold mb-1">Your verdict</legend>
+        <div class="verdict-choice">
+          {% for value, label in line.form.fields.verdict.choices %}
+          <label>
+            <input type="radio" name="verdict" value="{{ value }}"{% if line.verdict == value %} checked{% endif %}>
+            <span class="{% if value == 'POSITIVE' %}pos{% else %}neg{% endif %}">{{ label }}</span>
+          </label>
+          {% endfor %}
+        </div>
+      </fieldset>
+      <div class="mt-2">
+        <label class="small text-muted" for="l{{ line.pk }}-comments">Comment <span class="text-muted">(required if it does not comply)</span></label>
+        {{ line.form.comments }}
+      </div>
+      {% include "audits/_line_state.html" %}
+    </form>
+    {% else %}
+      <div class="mt-3 small">
+        <strong>{% if line.verdict == "POSITIVE" %}Complies{% elif line.verdict == "NEGATIVE" %}<span class="flag">Does not comply</span>{% else %}No verdict{% endif %}</strong>
+        {% if line.comments %}<div class="text-muted mt-1" style="white-space:pre-wrap">{{ line.comments }}</div>{% endif %}
+      </div>
+    {% endif %}
+  </div>
+</article>

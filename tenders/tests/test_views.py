@@ -155,7 +155,7 @@ class DetailTests(ViewTestBase):
         self.assertIn(response.context["days_left"], (9, 10))  # depends on the hour of the local day
         gate = response.context["gate"]
         self.assertEqual(gate.who, "PM")
-        self.assertIn("1 item(s) unpriced", gate.text)
+        self.assertIn("1 of 2 items have no price yet", gate.text)
         self.assertTrue(any("(R2)" in d for d in gate.details))
 
     def test_brass_only_when_the_md_is_needed(self):

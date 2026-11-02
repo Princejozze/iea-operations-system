@@ -27,29 +27,7 @@
 <div class="card needs-md-panel">
   <div class="card-body">
     <h2 class="h6 needs-md">Your decision</h2>
-    <form method="post" novalidate>
-      {% csrf_token %}
-      {% if form.non_field_errors %}
-      <div class="alert alert-danger">{% for e in form.non_field_errors %}<div>{{ e }}</div>{% endfor %}</div>
-      {% endif %}
-      <fieldset class="mb-3">
-        <legend class="form-label small fw-semibold">Register this tender?</legend>
-        {% for choice in form.decision %}
-        <div class="form-check">
-          <input class="form-check-input" type="radio" name="{{ choice.data.name }}" value="{{ choice.data.value }}"
-                 id="{{ choice.id_for_label }}"{% if choice.data.selected %} checked{% endif %}>
-          <label class="form-check-label" for="{{ choice.id_for_label }}">
-            {% if choice.data.value == "APPROVED" %}Approve — work may begin{% else %}Decline — the tender is withdrawn{% endif %}
-          </label>
-        </div>
-        {% endfor %}
-        {% for e in form.decision.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}
-      </fieldset>
-      {% with f=form.comments %}{% include "approvals/_field.html" %}{% endwith %}
-      {% with f=form.typed_name %}{% include "approvals/_field.html" %}{% endwith %}
-      {% with f=form.password %}{% include "approvals/_field.html" %}{% endwith %}
-      <button type="submit" class="btn btn-needs-md w-100">Sign decision</button>
-    </form>
+    {% include "approvals/_decision_form.html" with question="Register this tender?" approve_label="Approve — work may begin" decline_label="Decline — withdraw it" %}
   </div>
 </div>
 {% endblock %}

@@ -1,0 +1,15 @@
+{# One line under the fields: what happened to the last edit, and what R2 still wants on this item. #}
+<div id="item-{{ item.pk }}-state" class="item-state{% if errors %} err{% endif %}" aria-live="polite"{% if oob %} hx-swap-oob="true"{% endif %}>
+  {% if errors %}
+    {% for e in errors %}<div role="alert">{{ e }}</div>{% endfor %}
+  {% elif state %}<span class="text-muted">{{ state }}</span>{% endif %}
+  <span class="saving">Saving…</span>
+  <div class="d-flex flex-wrap gap-1 mt-1">
+    {% if item.missing %}
+      <span class="text-muted me-1">Still needs</span>
+      {% for m in item.missing %}<span class="chip">{{ m }}</span>{% endfor %}
+    {% else %}
+      <span class="chip ok">Ready for audit</span>
+    {% endif %}
+  </div>
+</div>

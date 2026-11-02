@@ -1,0 +1,4 @@
+{# A new card appended to the list, a cleared add-form, and fresh totals. #}
+{% include "items/_item_card.html" %}
+<div id="new-item-slot" class="mt-3" hx-swap-oob="true">{% include "items/_new_item_form.html" %}</div>
+{% include "items/_sheet_summary.html" %}

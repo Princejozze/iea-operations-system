@@ -5,29 +5,34 @@
     <tr>
       <th scope="col">Tender</th>
       <th scope="col" class="d-none d-lg-table-cell">Client</th>
-      <th scope="col">Stage</th>
+      <th scope="col" class="d-none d-sm-table-cell">Stage</th>
       <th scope="col" class="num d-none d-sm-table-cell">Priced</th>
-      <th scope="col" class="num">Days</th>
+      <th scope="col" class="num d-none d-sm-table-cell">Days</th>
     </tr>
   </thead>
   <tbody>
   {% for t in page %}
     <tr>
       <td>
-        <a class="ref" href="{% url 'tenders:detail' t.pk %}">{{ t.reference }}</a>
+        <a class="ref ref-link" href="{% url 'tenders:detail' t.pk %}">{{ t.reference }}</a>
         {% if t.legacy_reference %}<span class="ref text-muted small ms-1">{{ t.legacy_reference }}</span>{% endif %}
         <div class="small">{{ t.title|default:"(awaiting verification)"|truncatechars:90 }}</div>
         <div class="small text-muted">
           {% if t.official_reference %}<span class="ref">{{ t.official_reference }}</span>{% endif %}
           <span class="d-lg-none">{% if t.client %} · {{ t.client.short_name|default:t.client.name }}{% endif %}</span>
         </div>
+        <div class="d-sm-none mt-1 d-flex flex-wrap align-items-center gap-2">
+          <span class="badge {% if t.needs_md %}needs-md-badge{% else %}badge-status{% endif %}">{{ t.get_status_display }}</span>
+          {% if t.days_left is not None %}<span class="days small{% if t.days_left <= 3 %} soon{% endif %}">{% if t.days_left < 0 %}passed{% elif t.days_left == 0 %}due today{% else %}{{ t.days_left }} day{{ t.days_left|pluralize }} left{% endif %}</span>{% endif %}
+          {% if t.items_total %}<span class="small text-muted num">{{ t.items_priced }}/{{ t.items_total }} priced</span>{% endif %}
+        </div>
       </td>
       <td class="d-none d-lg-table-cell small">{{ t.client.name|default:"—" }}</td>
-      <td>
+      <td class="d-none d-sm-table-cell">
         <span class="badge {% if t.needs_md %}needs-md-badge{% else %}badge-status{% endif %}">{{ t.get_status_display }}</span>
       </td>
       <td class="num d-none d-sm-table-cell">{{ t.items_priced }}/{{ t.items_total }}</td>
-      <td class="num">{% if t.days_left is None %}—{% else %}{{ t.days_left }}{% endif %}</td>
+      <td class="num d-none d-sm-table-cell"><span class="days{% if t.days_left is not None and t.days_left >= 0 and t.days_left <= 3 %} soon{% endif %}">{% if t.days_left is None %}—{% else %}{{ t.days_left }}{% endif %}</span></td>
     </tr>
   {% endfor %}
   </tbody>

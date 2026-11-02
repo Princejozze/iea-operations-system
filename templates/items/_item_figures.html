@@ -1,0 +1,10 @@
+<div id="item-{{ item.pk }}-figures" class="text-end flex-none"{% if oob %} hx-swap-oob="true"{% endif %}>
+  {% if item.total_selling_price_tzs is not None %}
+    <div class="num fw-semibold">{{ item.unit_selling_price_tzs|floatformat:"0g" }}</div>
+    <div class="small text-muted">TZS per unit</div>
+    <div class="num small text-muted">{{ item.total_selling_price_tzs|floatformat:"0g" }} total</div>
+    <span data-priced hidden></span>
+  {% else %}
+    <div class="small text-muted">Unpriced</div>
+  {% endif %}
+</div>

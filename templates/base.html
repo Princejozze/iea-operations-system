@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="data:,">
   <title>{% block title %}IEA Operations{% endblock %}</title>
   {% load static %}
 
@@ -29,7 +30,14 @@
           <li class="nav-item"><a class="nav-link" href="{% url 'tenders:upload' %}">Upload tender</a></li>
           {% endif %}
           {% if user.role == "EXEC" %}
-          <li class="nav-item"><a class="nav-link" href="{% url 'approvals:registration_queue' %}">Registration approvals</a></li>
+          <li class="nav-item"><a class="nav-link" href="{% url 'approvals:registration_queue' %}">Registrations</a></li>
+          <li class="nav-item"><a class="nav-link" href="{% url 'approvals:submission_queue' %}">Submissions</a></li>
+          {% endif %}
+          {% if user.role == "AUDIT" or user.role == "EXEC" or user.role == "HOPS" %}
+          <li class="nav-item"><a class="nav-link" href="{% url 'audits:queue' %}">QC audits</a></li>
+          {% endif %}
+          {% if user.role == "PM" or user.role == "EXEC" or user.role == "FIN" or user.role == "HOPS" %}
+          <li class="nav-item"><a class="nav-link" href="{% url 'approvals:fund_list' %}">Fund requests</a></li>
           {% endif %}
         </ul>
         <div class="d-flex align-items-center gap-2 py-2 py-md-0">

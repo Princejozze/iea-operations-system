@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}Submission approvals — IEA Operations{% endblock %}
+{% block content %}
+<h1 class="h4 mb-1 needs-md">Submission approvals</h1>
+<p class="text-muted small">Bids the QC audit has passed. Nothing is submitted without your signature (R3).</p>
+
+<div class="card needs-md-panel">
+{% for t in tenders %}
+  <a class="d-block text-decoration-none p-3{% if not forloop.last %} border-bottom{% endif %}" href="{% url 'approvals:submission_decide' t.pk %}">
+    <div class="d-flex justify-content-between gap-2 align-items-baseline">
+      <span class="ref">{{ t.reference }}</span>
+      <span class="days{% if t.days_left is not None and t.days_left <= 3 %} soon{% endif %} small">{% if t.days_left is None %}no deadline{% elif t.days_left < 0 %}deadline passed{% elif t.days_left == 0 %}due today{% else %}{{ t.days_left }} day{{ t.days_left|pluralize }} left{% endif %}</span>
+    </div>
+    <div>{{ t.title }}</div>
+    <div class="d-flex justify-content-between gap-2 small text-muted">
+      <span>{{ t.client.name }} · PM {{ t.project_manager.get_full_name|default:t.project_manager.email }}</span>
+      <span class="num text-nowrap">TZS {{ t.summary.total|floatformat:"0g" }}</span>
+    </div>
+  </a>
+{% empty %}
+  <div class="p-3 text-muted">Nothing is waiting for your signature.</div>
+{% endfor %}
+</div>
+{% endblock %}

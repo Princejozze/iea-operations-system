@@ -1,0 +1,10 @@
+{# Progress through the audit. Rendered in place and again out-of-band after every line is saved. #}
+<div id="audit-summary"{% if oob %} hx-swap-oob="true"{% endif %}>
+  <div class="d-flex justify-content-between align-items-baseline gap-2 flex-wrap">
+    <div><span class="num fw-semibold">{{ decided }}</span> of <span class="num">{{ total }}</span> decided</div>
+    <div class="small text-muted text-end">
+      {% if negative %}<span class="flag">{{ negative }} do not comply</span> · {% endif %}<span class="num">{{ flagged }}</span> with variance flagged
+    </div>
+  </div>
+  <div class="meter mt-1" role="progressbar" aria-valuenow="{{ percent }}" aria-valuemin="0" aria-valuemax="100" aria-label="Lines decided"><span style="width: {{ percent }}%"></span></div>
+</div>

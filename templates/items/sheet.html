@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}Item sheet — {{ tender.reference }} — IEA Operations{% endblock %}
+{% block content %}
+<div class="mb-2">
+  <div class="mb-1">{% include "tenders/_reference.html" %}</div>
+  <h1 class="h5 mb-1">{{ tender.title|default:"(untitled)" }}</h1>
+  <div class="small text-muted">
+    <a href="{% url 'tenders:detail' tender.pk %}">Tender details</a> · {{ tender.get_status_display }}
+    {% if tender.submission_deadline %} · due {{ tender.submission_deadline|date:"j M, H:i" }}{% endif %}
+  </div>
+</div>
+
+<div class="sheet-bar">{% include "items/_sheet_summary.html" %}</div>
+
+<div class="d-flex flex-wrap gap-2 align-items-center justify-content-between mb-3">
+  <nav class="filter-tabs" aria-label="Filter items">
+    {% for key, label, n in filters %}
+    <a class="btn btn-sm btn-outline-ink{% if key == show %} active{% endif %}" href="?show={{ key }}">{{ label }} <span class="num">{{ n }}</span></a>
+    {% endfor %}
+  </nav>
+  <div class="d-flex flex-wrap gap-2">
+    {% if can_start_costing %}
+    <form method="post" action="{% url 'items:start_costing' tender.pk %}">{% csrf_token %}<button class="btn btn-ink" type="submit"{% if not summary.items_total %} disabled{% endif %}>Start costing</button></form>
+    {% endif %}
+    {% if can_submit_audit %}
+    <form method="post" action="{% url 'items:submit_for_audit' tender.pk %}" data-confirm="Submit to the QC auditors? Exchange rates lock now.">{% csrf_token %}<button class="btn btn-ink" type="submit"{% if not_ready or not summary.items_total %} disabled{% endif %}>Submit to QC audit</button></form>
+    {% endif %}
+  </div>
+</div>
+
+{% if can_edit and is_pm and tender.status == "COSTING" %}
+<p class="small text-muted mb-3">
+  Many quotes at once?
+  <a href="{% url 'items:quote_sheet_download' tender.pk %}">Download the quote sheet</a>, fill the price columns, then
+  <a href="{% url 'items:quote_sheet_upload' tender.pk %}">upload it back</a>.
+</p>
+{% endif %}
+
+{% if tender.status == "DRAFTING" and is_pm %}
+<div class="alert alert-light border small">Costing has not started. Check the items below, then press <strong>Start costing</strong>. Quotes and prices are entered once it has.</div>
+{% endif %}
+
+{% if can_edit %}<datalist id="suppliers-dl">{% for name in supplier_names %}<option value="{{ name }}">{% endfor %}</datalist>{% endif %}
+<div id="item-list">
+{% for item in items %}
+  {% include "items/_item_card.html" with form=item.row_form %}
+{% empty %}
+  <p class="text-muted">{% if show == "all" %}No items yet. Add the first one below.{% else %}Nothing here: every item passes this filter.{% endif %}</p>
+{% endfor %}
+</div>
+
+{% if can_edit %}
+<div id="new-item-slot" class="mt-3">{% include "items/_new_item_form.html" %}</div>
+{% endif %}
+{% endblock %}

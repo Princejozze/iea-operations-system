@@ -1,0 +1,59 @@
+{# One item. A single form saves on change and is answered with out-of-band fragments (see items/views.py). #}
+<article class="item-card{% if item.is_priced %} is-priced{% endif %}{% if just_saved %} just-saved{% endif %}" id="item-{{ item.pk }}">
+  <div class="p-2 p-md-3 pb-1">
+    <div class="d-flex justify-content-between gap-3 align-items-start">
+      <div style="min-width:0">
+        <div class="d-flex align-items-center gap-2 flex-wrap">
+          <span class="item-no" title="{{ item.item_reference }}">#{{ item.item_reference|slice:"-3:" }}</span>
+          {% if item.quote_count %}<span class="chip">{{ item.quote_count }} quote{{ item.quote_count|pluralize }}</span>{% endif %}
+        </div>
+        <div class="spec mt-1">{{ item.specification }}</div>
+      </div>
+      {% include "items/_item_figures.html" %}
+    </div>
+  </div>
+
+  {% if can_edit %}
+  <form class="px-2 px-md-3 pb-2" id="f-{{ item.pk }}" hx-post="{% url 'items:item_save' item.pk %}" hx-trigger="change" hx-swap="none" hx-sync="this:queue last">
+    {% if form.locked %}
+    <p class="small text-muted mb-2">
+      Costed on the quote from <strong>{{ item.selected_quote.supplier }}</strong>: price, currency and the figures that came from it are fixed.
+      <a href="{% url 'items:quotes' item.pk %}">Change the quote</a>
+    </p>
+    {% endif %}
+    <div class="item-grid">
+      <div>{{ form.quantity.label_tag }}{{ form.quantity }}</div>
+      <div>{{ form.unit_price.label_tag }}{{ form.unit_price }}</div>
+      <div>{{ form.currency.label_tag }}{{ form.currency }}</div>
+      <div>{{ form.incoterm.label_tag }}{{ form.incoterm }}</div>
+      <div class="span-2">{{ form.supplier_name.label_tag }}{{ form.supplier_name }}</div>
+    </div>
+
+    <details class="mt-2" hx-get="{% url 'items:item_more' item.pk %}" hx-trigger="toggle once" hx-target="#more-{{ item.pk }}" hx-swap="innerHTML">
+      <summary class="small">More: description, make, model, origin, costing inputs</summary>
+      <div id="more-{{ item.pk }}" class="mt-2 small text-muted">Loading…</div>
+    </details>
+    {% include "items/_item_state.html" %}
+  </form>
+  {% else %}
+  <div class="px-2 px-md-3 pb-2">
+    <dl class="small mb-1 row g-0">
+      <dt class="col-5 col-md-2 text-muted fw-normal">Quantity</dt><dd class="col-7 col-md-4 num text-start">{{ item.quantity }} {{ item.unit_of_measure }}</dd>
+      <dt class="col-5 col-md-2 text-muted fw-normal">Supplier</dt><dd class="col-7 col-md-4">{{ item.supplier|default:"—" }}</dd>
+      <dt class="col-5 col-md-2 text-muted fw-normal">Unit price</dt><dd class="col-7 col-md-4 num text-start">{% if item.unit_cost is not None %}{{ item.unit_cost|floatformat:"-2g" }} {{ item.currency }} {{ item.incoterm }}{% else %}—{% endif %}</dd>
+      <dt class="col-5 col-md-2 text-muted fw-normal">Make / model</dt><dd class="col-7 col-md-4">{{ item.make_brand|default:"—" }} {{ item.model_part_number }}</dd>
+    </dl>
+    {% include "items/_item_state.html" %}
+  </div>
+  {% endif %}
+
+  {% include "items/_attachments.html" %}
+
+  <div class="px-2 px-md-3 pb-2 d-flex justify-content-between align-items-center gap-2 border-top pt-2">
+    <a class="btn btn-sm btn-outline-ink" href="{% url 'items:quotes' item.pk %}">{% if item.quote_count %}Quotes ({{ item.quote_count }}){% else %}Enter a quote{% endif %}</a>
+    {% if can_edit %}
+    <button type="button" class="btn btn-sm btn-outline-ink" hx-post="{% url 'items:item_delete' item.pk %}" hx-target="#item-{{ item.pk }}"
+            hx-swap="outerHTML" hx-confirm="Delete this item? This cannot be undone.">Delete</button>
+    {% endif %}
+  </div>
+</article>

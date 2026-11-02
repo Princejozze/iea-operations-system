@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}Request funds — {{ tender.reference }} — IEA Operations{% endblock %}
+{% block content %}
+<div class="mb-3">
+  <div class="mb-1">{% include "tenders/_reference.html" %}</div>
+  <a class="small" href="{% url 'tenders:detail' tender.pk %}">&larr; Back to the tender</a>
+  <h1 class="h5 mt-2 mb-1">Request funds</h1>
+  <div class="small text-muted">{{ tender.title|default:"(untitled)" }}</div>
+</div>
+
+{% if has_nest_funds %}
+<div class="alert alert-light border small">The NeST account is already funded for this tender: a NeST application fee request is paid.</div>
+{% endif %}
+
+{% if not allowed %}
+<div class="alert alert-light border">A fund request can be raised once the tender is registered and until it is submitted. It is {{ tender.get_status_display|lower }} now.</div>
+{% else %}
+<p class="small text-muted">The NeST account must hold the application fee before the bid can be submitted. The Managing Director approves; Finance pays.</p>
+<form method="post" class="card card-body mb-4" novalidate>
+  {% csrf_token %}
+  {% if form.non_field_errors %}<div class="alert alert-danger" role="alert">{% for e in form.non_field_errors %}<div>{{ e }}</div>{% endfor %}</div>{% endif %}
+  <div class="row g-3">
+    <div class="col-12">{% include "items/_form_field.html" with f=form.purpose %}</div>
+    <div class="col-7 col-md-5">{% include "items/_form_field.html" with f=form.amount %}</div>
+    <div class="col-5 col-md-3">{% include "items/_form_field.html" with f=form.currency %}</div>
+    <div class="col-12">{% include "items/_form_field.html" with f=form.notes %}</div>
+    <div class="col-12"><button class="btn btn-ink" type="submit">Send to the Managing Director</button></div>
+  </div>
+</form>
+{% endif %}
+
+{% if existing %}
+<h2 class="h6">Already raised for this tender</h2>
+<ul class="list-unstyled small">
+  {% for fr in existing %}<li class="border-top py-2"><a href="{% url 'approvals:fund_detail' fr.pk %}">{{ fr.get_purpose_display }}</a> · <span class="num">{{ fr.amount|floatformat:"-2g" }} {{ fr.currency }}</span> · {{ fr.get_status_display }}</li>{% endfor %}
+</ul>
+{% endif %}
+{% endblock %}

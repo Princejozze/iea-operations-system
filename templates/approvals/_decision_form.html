@@ -1,0 +1,23 @@
+{# A signed MD decision: choose, give a reason if declining, sign with typed name + password (§4). Brass: the MD is the blocker. #}
+<form method="post" novalidate>
+  {% csrf_token %}
+  {% if form.non_field_errors %}
+  <div class="alert alert-danger" role="alert">{% for e in form.non_field_errors %}<div>{{ e }}</div>{% endfor %}</div>
+  {% endif %}
+  <fieldset class="mb-3">
+    <legend class="form-label small fw-semibold">{{ question }}</legend>
+    <div class="verdict-choice">
+      {% for choice in form.decision %}
+      <label>
+        <input type="radio" name="{{ choice.data.name }}" value="{{ choice.data.value }}"{% if choice.data.selected %} checked{% endif %} required>
+        <span class="{% if choice.data.value == 'APPROVED' %}pos{% else %}neg{% endif %}">{% if choice.data.value == "APPROVED" %}{{ approve_label }}{% else %}{{ decline_label }}{% endif %}</span>
+      </label>
+      {% endfor %}
+    </div>
+    {% for e in form.decision.errors %}<div class="flag small mt-1">{{ e }}</div>{% endfor %}
+  </fieldset>
+  {% with f=form.comments %}{% include "approvals/_field.html" %}{% endwith %}
+  {% with f=form.typed_name %}{% include "approvals/_field.html" %}{% endwith %}
+  {% with f=form.password %}{% include "approvals/_field.html" %}{% endwith %}
+  <button type="submit" class="btn btn-needs-md w-100">Sign decision</button>
+</form>
