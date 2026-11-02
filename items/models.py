@@ -67,7 +67,7 @@ from tenders.models import (
     TransitionError,
 )
 
-from .costing import CostingInputs, compute_costing
+from .costing import CostingInputs, compute_costing, freight_included
 
 # ---------------------------------------------------------------------------
 # Vocabularies (§7, §8)
@@ -324,7 +324,8 @@ class Item(GuardedWrites, Auditable):
 
     # Quote field -> Item field, copied by Quote.select() (§5 step 13). The quoted
     # price is both what the supplier charges (unit_cost) and the chain's import
-    # input (fob_unit_price, in `currency`; with shipping_applies False the chain
+    # input (fob_unit_price holds the price as quoted, on `incoterm`, whatever the term:
+    # CIF/CFR add no shipping, EXW/FOB/FCA do; with shipping_applies False the chain
     # adds no shipping, duty or C&F, so a local quote costs correctly too).
     # local_unit_cost, risk_pct and labour hours stay the PM's own inputs.
     QUOTE_TO_ITEM = (
@@ -532,6 +533,7 @@ class Item(GuardedWrites, Auditable):
                 shipping_applies=self.shipping_applies,
                 risk_rate=_decimal(self.risk_pct) / 100,
                 labour_hours_per_unit=_decimal(self.labour_hours_per_unit),
+                freight_included=freight_included(self.incoterm),
             ),
             self.costing_rates,
         )

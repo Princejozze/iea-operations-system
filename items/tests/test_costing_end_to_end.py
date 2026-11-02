@@ -138,7 +138,8 @@ SNAPSHOT_RATES = {
 class CostingEndToEndTests(ItemFixtures, TestCase):
     ITEM = dict(
         quantity=4, fob_unit_price=D("100"), currency=Currency.USD, local_unit_cost=D("10000"),
-        shipping_applies=True, risk_pct=D("5"), labour_hours_per_unit=D("2.5"),
+        shipping_applies=True, incoterm="FOB",  # the template assumes FOB: shipping is added
+        risk_pct=D("5"), labour_hours_per_unit=D("2.5"),
     )
 
     def cost_item(self, **over):
@@ -275,3 +276,85 @@ class DecimalThroughoutTests(SimpleTestCase):
                 else:
                     self.assertIsInstance(field, models.DecimalField)
                     self.assertNotIsInstance(field, models.FloatField)
+
+
+# -- The Incoterm decides whether freight is already in the price -----------------------------
+#
+# 100 USD x 2,500 TZS/USD x 10 units = 2,500,000 TZS import material. No local material,
+# no risk, no labour, so only the import chain and the three markups are in play.
+# Derived by hand, not read off the code:
+#
+#   EXW / FOB / FCA  (freight NOT in the price: add 10% shipping)
+#     shipping 250,000 -> cif 2,750,000 -> duty 25% = 687,500, C&F 5% = 137,500
+#     total_material   = 2,750,000 + 687,500 + 137,500           = 3,575,000
+#     x 1.10 (overhead) = 3,932,500;  x 1.20 (margin) = 4,719,000;  x 1.01 (maintenance)
+#     total_selling    = 4,766,190;   unit_rate = 476,619
+#
+#   CIF / CFR        (freight IS in the price: shipping is zero, cif is the quoted price)
+#     shipping 0 -> cif 2,500,000 -> duty 25% = 625,000, C&F 5% = 125,000
+#     total_material   = 2,500,000 + 625,000 + 125,000           = 3,250,000
+#     x 1.10 = 3,575,000;  x 1.20 = 4,290,000;  x 1.01
+#     total_selling    = 4,332,900;   unit_rate = 433,290
+#
+# Charging 10% shipping on a CIF quote would give total_material 3,575,000: the freight
+# counted twice, with duty and C&F compounding on the inflated CIF.
+
+FREIGHT_NOT_IN_PRICE = {  # EXW, FOB, FCA
+    "import_material": D("2500000"), "shipping": D("250000"), "cif": D("2750000"),
+    "duty": D("687500"), "cnf": D("137500"), "total_material": D("3575000"),
+    "total_selling_price_tzs": D("4766190"), "unit_selling_price_tzs": 476619,
+}
+FREIGHT_IN_PRICE = {  # CIF, CFR
+    "import_material": D("2500000"), "shipping": D("0"), "cif": D("2500000"),
+    "duty": D("625000"), "cnf": D("125000"), "total_material": D("3250000"),
+    "total_selling_price_tzs": D("4332900"), "unit_selling_price_tzs": 433290,
+}
+
+
+class IncotermShippingTests(ItemFixtures, TestCase):
+    """shipping_applies = imported vs local. The Incoterm = is freight already in the price."""
+
+    def cost(self, incoterm, **over):
+        fields = dict(
+            quantity=10, fob_unit_price=D("100"), currency=Currency.USD, incoterm=incoterm,
+            shipping_applies=True, risk_pct=D("0"), labour_hours_per_unit=D("0"),
+        )
+        item = self.make_item(self.costing(), **{**fields, **over})
+        return Item.objects.get(pk=item.pk)
+
+    def assertFigures(self, item, expected):
+        for field, value in expected.items():
+            with self.subTest(figure=field):
+                self.assertEqual(getattr(item, field), value)
+
+    def test_exw_adds_shipping(self):
+        self.assertFigures(self.cost("EXW"), FREIGHT_NOT_IN_PRICE)
+
+    def test_fob_adds_shipping(self):
+        self.assertFigures(self.cost("FOB"), FREIGHT_NOT_IN_PRICE)
+
+    def test_fca_adds_shipping(self):
+        self.assertFigures(self.cost("FCA"), FREIGHT_NOT_IN_PRICE)
+
+    def test_cif_adds_no_shipping_and_cif_is_the_quoted_price(self):
+        self.assertFigures(self.cost("CIF"), FREIGHT_IN_PRICE)
+
+    def test_cfr_adds_no_shipping_and_cif_is_the_quoted_price(self):
+        self.assertFigures(self.cost("CFR"), FREIGHT_IN_PRICE)
+
+    def test_a_cif_quote_is_cheaper_than_the_same_price_on_fob_by_exactly_the_freight_it_counted_twice(self):
+        # 250,000 of shipping plus the duty and C&F charged on it (30% of 250,000 = 75,000).
+        self.assertEqual(self.cost("FOB").total_material - self.cost("CIF").total_material, D("325000"))
+
+    def test_a_locally_sourced_item_has_no_import_charges_whatever_the_incoterm(self):
+        for incoterm in ("EXW", "FOB", "FCA", "CIF", "CFR"):
+            with self.subTest(incoterm=incoterm):
+                item = self.cost(incoterm, shipping_applies=False)
+                self.assertEqual((item.shipping, item.cif, item.duty, item.cnf), (D("0"),) * 4)
+
+    def test_the_default_incoterm_is_cif_so_an_unspecified_quote_adds_no_shipping(self):
+        item = self.make_item(
+            self.costing(), quantity=10, fob_unit_price=D("100"), currency=Currency.USD,
+            risk_pct=D("0"), labour_hours_per_unit=D("0"),
+        )
+        self.assertFigures(Item.objects.get(pk=item.pk), FREIGHT_IN_PRICE)

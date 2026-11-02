@@ -6,11 +6,13 @@ it the rates it snapshotted and stores every figure it returns (§4: "store ever
 intermediate value ... so a bid submitted months ago can still be explained line
 by line").
 
-    import_material  = fob_unit_price × fx_rate × quantity
-    shipping         = import_material × shipping_rate     ┐
-    cif              = import_material + shipping          │ only when
-    duty             = cif × duty_rate                     │ shipping_applies,
-    cnf              = cif × cnf_rate                      ┘ otherwise all zero
+    import_material  = quoted_unit_price × fx_rate × quantity
+    shipping         = import_material × shipping_rate  only when the Incoterm leaves
+                       freight OUT of the price (EXW, FOB, FCA); zero for CIF and CFR,
+                       whose price already carries freight
+    cif              = import_material + shipping       (CIF/CFR: the quoted price itself)
+    duty             = cif × duty_rate                  ┐ only when shipping_applies
+    cnf              = cif × cnf_rate                   ┘ (imported); otherwise all zero
     total_material   = (local_unit_cost × quantity) + import_material
                        + shipping + duty + cnf
     risk_management  = total_material × risk_rate
@@ -27,6 +29,12 @@ by line").
     total_selling    = material_selling + labour_selling + maintenance
     unit_rate        = floor(total_selling / quantity)
 
+Two separate questions (do not conflate them): ``shipping_applies`` says imported vs locally
+sourced, and decides whether the import chain runs at all. The Incoterm decides only whether
+freight is already inside the quoted price. The master template assumes FOB; the real data is
+CIF-dominant, and adding 10% shipping to a CIF quote double-counts freight, which duty and
+C&F then compound.
+
 Cost of capital (``total_material × cost_of_capital_rate``) is computed and
 returned but is NOT part of ``total_selling``: the template computes it and
 never adds it, and two questions to Faraja are still open (§4). Do not add it
@@ -42,6 +50,15 @@ from dataclasses import dataclass, fields as dataclass_fields
 from decimal import ROUND_FLOOR, ROUND_HALF_UP, Decimal, localcontext
 
 ZERO = Decimal(0)
+
+# Incoterms whose price already includes freight to the destination port. Plain codes, not
+# items.models.Incoterm, so this module stays a pure function with no model import.
+FREIGHT_INCLUDED_INCOTERMS = frozenset({"CIF", "CFR"})
+
+
+def freight_included(incoterm):
+    """True when the quoted price already carries freight (CIF, CFR); False for EXW, FOB, FCA."""
+    return incoterm in FREIGHT_INCLUDED_INCOTERMS
 STORED_PLACES = Decimal("0.000001")  # six decimal places, matching the model fields
 
 
@@ -61,6 +78,8 @@ class CostingInputs:
     shipping_applies: bool
     risk_rate: Decimal
     labour_hours_per_unit: Decimal
+    # True for CIF/CFR quotes: freight is already in the price, so no shipping is added.
+    freight_included: bool = False
 
 
 @dataclass(frozen=True)
@@ -100,7 +119,7 @@ def compute_costing(inputs, rates):
 
         import_material = _d(inputs.fob_unit_price) * _d(inputs.fx_rate) * quantity
         if inputs.shipping_applies:
-            shipping = import_material * rates.shipping_rate
+            shipping = ZERO if inputs.freight_included else import_material * rates.shipping_rate
             cif = import_material + shipping
             duty = cif * rates.duty_rate
             cnf = cif * rates.cnf_rate

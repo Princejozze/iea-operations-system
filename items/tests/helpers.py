@@ -43,6 +43,7 @@ class ItemFixtures(TenderFixtures):
         """The hand-worked example in test_costing: 100 USD FOB at 2500, qty 10."""
         fields.setdefault("quantity", 10)
         fields.setdefault("fob_unit_price", D("100"))
+        fields.setdefault("incoterm", "FOB")  # the template assumes FOB: shipping is added
         fields.setdefault("currency", Currency.USD)
         fields.setdefault("risk_pct", D("5"))
         fields.setdefault("labour_hours_per_unit", D("2"))

@@ -57,6 +57,19 @@ class StartTests(AuditFixtures, TestCase):
             self.assertEqual(lines[item.pk].verdict, "")
         self.assertEqual(tender.qc_audits.get(), audit)  # the reverse accessor tenders reads
 
+    def test_specification_offered_is_prefilled_from_the_selected_quote(self):
+        tender = self.costing()
+        quoted = self.complete_item(tender, specification="Scale, 656kg")
+        unquoted = self.complete_item(tender, specification="Autoclave, 100 l")
+        self.quote(
+            quoted, specification_offered="Capacity 660 kg, stainless platform",
+            make_brand="Eppendorf", model_part_number="5424 R", country_of_origin="Germany",
+        ).select(self.pm)
+        tender.submit_for_audit(self.pm)
+        audit = QCAudit.objects.start(tender, self.auditor)
+        self.assertEqual(audit.lines.get(item=quoted).specification_offered, "Capacity 660 kg, stainless platform")
+        self.assertEqual(audit.lines.get(item=unquoted).specification_offered, "")  # no quote selected
+
     def test_creation_is_audited_with_the_auditor_as_actor(self):
         audit, *_ = self.open_audit()
         entry = AuditEntry.objects.get(model="audits.QCAudit", object_id=str(audit.pk), action=AuditAction.CREATE)

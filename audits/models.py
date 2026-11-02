@@ -55,8 +55,9 @@ class QCAuditQuerySet(AuditableQuerySet):
         """
         Open an audit of ``tender`` by ``auditor`` and prefill one line per item,
         in one transaction. Each line starts with the item's specification as
-        ``specification_required`` and no verdict; the auditor types what is
-        offered and decides.
+        ``specification_required``, what the selected quote offered as
+        ``specification_offered`` (§5 step 13; empty if no quote is selected) and
+        no verdict; the auditor reviews it and decides.
         """
         with transaction.atomic(using=self.db), audit_actor(auditor):
             audit = self.model(tender=tender, auditor=auditor)
@@ -65,7 +66,8 @@ class QCAuditQuerySet(AuditableQuerySet):
             audit.save()
             for item in Item.objects.filter(tender=tender).order_by("item_reference"):
                 QCAuditLine.objects.create(
-                    audit=audit, item=item, specification_required=item.specification
+                    audit=audit, item=item, specification_required=item.specification,
+                    specification_offered=item.specification_offered,
                 )
         return audit
 
