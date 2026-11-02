@@ -7,7 +7,7 @@ the four hand-filled Smartsheets the company tendered on before. `CLAUDE.md` §1
 is in which phase.
 
 **The specification is [`CLAUDE.md`](CLAUDE.md)**: roles, the status vocabulary, the hard
-business rules (R1–R21), the data model and the build order. This README only gets a
+business rules (R1–R23), the data model and the build order. This README only gets a
 machine running. If anything here disagrees with `CLAUDE.md`, `CLAUDE.md` wins.
 
 Django 6.1 · Python 3.12 · PostgreSQL 16 · server-rendered templates, no SPA.
@@ -129,7 +129,7 @@ Check:
 
 ```powershell
 python --version                       # Python 3.12.x
-python -c "import django, pymupdf4llm, google.genai; print('imports ok')"
+python -c "import django, pymupdf4llm, google.genai, openpyxl; print('imports ok')"
 ```
 
 ## 5. Configure `.env`
@@ -167,7 +167,7 @@ Every variable the code reads:
 | `AWS_S3_REGION_NAME` | optional | Default `af-south-1`. |
 | `GEMINI_API_KEY`, `GEMINI_MODEL` | only for extraction | Used by `extract_tenders` (step 8). No model name is hardcoded: pick a current Flash-tier model from Google's documentation (in November 2026, `gemini-3.6-flash`; `gemini-2.5-flash` is retired for new keys). Without them the command exits with an instruction. After changing either, restart the poller. |
 | `EXCHANGE_RATE_API_KEY` | currently unused | Reserved. Nothing reads it yet; exchange rates are entered in the admin (step 8). |
-| `MEDIA_ROOT` | **required when `USE_S3=False`** | A directory **outside the repository**, e.g. `C:/Users/you/iea-media`. Tender PDFs carry bid pricing, so startup refuses an unset value or a path inside the repo. |
+| `MEDIA_ROOT` | **required when `USE_S3=False`** | A directory **outside the repository**, e.g. `C:/Users/you/iea-media`. Tender PDFs carry bid pricing, so startup refuses an unset value or a path inside the repo. It is **per machine**: set it to a path on this PC. Uploaded files are in neither git nor the database, so on a second machine the folder starts empty. |
 | `RUN_GEMINI_TESTS` | tests only | Set to `1` (with the two Gemini variables) to run the one opt-in test that makes a real, **billed** API call. Not an `.env` setting. |
 
 Minimal development `.env`: set `SECRET_KEY`, `DATABASE_URL` and `MEDIA_ROOT`, leave the rest as shipped.
@@ -242,6 +242,20 @@ Setting up, in the admin:
    any item priced in a foreign currency**. Without a rate on record the item cannot be costed.
 3. **Clients** and **Suppliers**, as tenders need them.
 
+### Optional: demo data, to look at every screen
+
+```powershell
+python manage.py seed_demo
+```
+
+Creates one demo account per role (sign-in emails and passwords are printed at the end;
+the addresses are on the unroutable `demo.invalid` domain), the clients from `CLAUDE.md`
+§3, a few suppliers, **illustrative** USD/EUR/GBP rates, and eight tenders spread across
+the workflow, from awaiting verification to won and lost. Every state is reached through
+the real rules. Safe to run again: it skips whatever already exists. It refuses to run
+unless `DEBUG` is on. **Never run it against a database that will hold real tenders**: its
+exchange rates are made up, and costing would use them.
+
 ### The extraction poller: a second terminal
 
 Tender extraction runs outside the web request. `python manage.py extract_tenders` picks up
@@ -283,7 +297,7 @@ It takes about a minute. It creates and destroys a database called `test_iea` (h
 the same time share that one name and destroy each other's database; give each its own by
 changing the database name in `DATABASE_URL` for one of them.
 
-**What to expect on a fresh clone** (about 790 tests at the time of writing, PostgreSQL 16):
+**What to expect on a fresh clone** (about 1,150 tests at the time of writing, PostgreSQL 16):
 
 - **About 54 tests are skipped.** 53 need the three real tender PDFs, which are deliberately
   **not in git** (`tenders/tests/fixtures/pdfs/` is gitignored; they must never enter
@@ -292,14 +306,8 @@ changing the database name in `DATABASE_URL` for one of them.
   `gasco_general_TR24_001_2026_2027_G_133.pdf`, `sample_general_goods_173pp.pdf`,
   `tanapa_minicomp_TR219_2026_2027_G_38.pdf`.
   The last skip is the opt-in live Gemini call (`RUN_GEMINI_TESTS=1`, see step 5).
-- **One to three known failures on Windows**, all staleness tests for `extract_tenders`
-  (details in the commit message of the `tenders:` extraction commit). One always fails: it
-  patches a constant that is bound at import time. The other two are timing-dependent and
-  fail on some runs only: they test "older than now" with a threshold of zero, and the
-  Windows clock has a 15.6 ms resolution. If those are the only failures, your setup is
-  fine. When they are fixed, delete this paragraph.
-- Anything else failing, or errors, means a setup problem. The usual causes are a database
-  role without `CREATEDB`, or `DATABASE_URL` pointing at the wrong database.
+- **No failures.** Any failure or error means a setup problem. The usual causes are a
+  database role without `CREATEDB`, or `DATABASE_URL` pointing at the wrong database.
 
 ---
 
