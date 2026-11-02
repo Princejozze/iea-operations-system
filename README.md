@@ -165,7 +165,7 @@ Every variable the code reads:
 | `USE_S3` | optional (default `False`) | `True` sends uploads to S3 (production: uploads must never sit on the app server). |
 | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_STORAGE_BUCKET_NAME` | only if `USE_S3=True` | A scoped IAM user, never the root account. |
 | `AWS_S3_REGION_NAME` | optional | Default `af-south-1`. |
-| `GEMINI_API_KEY`, `GEMINI_MODEL` | only for extraction | Used by `extract_tenders` (step 8). No model name is hardcoded: pick a current Flash-tier model from Google's documentation. Without them the command exits with an instruction. |
+| `GEMINI_API_KEY`, `GEMINI_MODEL` | only for extraction | Used by `extract_tenders` (step 8). No model name is hardcoded: pick a current Flash-tier model from Google's documentation (in November 2026, `gemini-3.6-flash`; `gemini-2.5-flash` is retired for new keys). Without them the command exits with an instruction. After changing either, restart the poller. |
 | `EXCHANGE_RATE_API_KEY` | currently unused | Reserved. Nothing reads it yet; exchange rates are entered in the admin (step 8). |
 | `MEDIA_ROOT` | **required when `USE_S3=False`** | A directory **outside the repository**, e.g. `C:/Users/you/iea-media`. Tender PDFs carry bid pricing, so startup refuses an unset value or a path inside the repo. |
 | `RUN_GEMINI_TESTS` | tests only | Set to `1` (with the two Gemini variables) to run the one opt-in test that makes a real, **billed** API call. Not an `.env` setting. |
@@ -242,11 +242,35 @@ Setting up, in the admin:
    any item priced in a foreign currency**. Without a rate on record the item cannot be costed.
 3. **Clients** and **Suppliers**, as tenders need them.
 
+### The extraction poller: a second terminal
+
 Tender extraction runs outside the web request. `python manage.py extract_tenders` picks up
-tenders in `EXTRACTING`, converts and reads them, and moves them to `PENDING_VERIFICATION`;
-it needs `GEMINI_API_KEY` and `GEMINI_MODEL`. In production it is run every minute (cron on
-Linux; on Windows, Task Scheduler running `.venv\Scripts\python.exe manage.py extract_tenders`
-from the repository folder).
+tenders in `EXTRACTING`, converts and reads them, and moves them to `PENDING_VERIFICATION`.
+It needs `GEMINI_API_KEY` and `GEMINI_MODEL` in `.env`.
+
+**Nothing runs it for you in development.** Windows has no cron, so an uploaded tender sits
+in `EXTRACTING` until it is run. Open a **second terminal**, activate the venv, and leave
+this running beside `runserver`:
+
+```powershell
+python manage.py extract_tenders --loop
+```
+
+It runs once a minute, the same cadence as production cron, until you press Ctrl+C. It
+prints a line only when it works on a tender. Add `-v 2` to see every run.
+
+- **Expect about two minutes from upload to the verification screen.** That breaks down as
+  up to a minute until the next run, about 0.4 s a page to convert (about a minute for a
+  170-page tender), and 10–20 s for Gemini.
+- **After editing `.env`, restart the poller.** It reads `.env` once, at start. A missing
+  key or model is reported on every run until you do.
+- **If Gemini is busy** (a 503 "high demand" or a 429), the tender stays in `EXTRACTING`
+  and the next run tries again. Only if it is still unread 30 minutes after upload is it
+  finished with empty fields for the PM to type in (R12).
+- To run it once instead, use `python manage.py extract_tenders` without `--loop`.
+
+`--loop` refuses to start when `DEBUG` is off. **Production uses real cron**, one run a
+minute, set up per [docs/DEPLOY.md](docs/DEPLOY.md) §7. Never use the loop there.
 
 ## 9. Run the test suite
 

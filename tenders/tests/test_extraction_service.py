@@ -13,7 +13,7 @@ from tenders.models import ExtractionOutcome as X, Tender, TenderExtraction, Ten
 from tenders.pipeline import service
 from tenders.pipeline.converter import PyMuPDF4LLMConverter
 from tenders.pipeline.extractor import (
-    ExtractionConfigError, ExtractionError, build_request, forms_from_plan,
+    ExtractionConfigError, ExtractionError, ExtractionUnavailable, build_request, forms_from_plan,
 )
 from tenders.pipeline.sections import Group as G
 
@@ -198,6 +198,17 @@ class PartialAndFailure(ExtractionCase):
         self.assertEqual(tender.extraction.fields, {})
         self.assertIn("Automatic extraction failed", tender.extraction.message)
         self.assertNotIn("API said no", tender.extraction.message)  # internals do not reach the PM
+
+    def test_a_briefly_unavailable_service_leaves_the_tender_for_the_next_run(self):
+        tender = self.prepared()
+        busy = FakeExtractor(error=ExtractionUnavailable("The Gemini request failed (ServerError 503)."))
+        with self.assertLogs("tenders.pipeline.service", level="WARNING"):
+            ext = service.extract_fields(tender, busy)
+        tender.refresh_from_db()
+        self.assertEqual((ext.outcome, tender.status), (X.PREPARED, S.EXTRACTING))  # not FAILED, not moved on
+        ext = service.extract_fields(tender, FakeExtractor(good_answer()))  # the next run asks again
+        tender.refresh_from_db()
+        self.assertEqual((ext.outcome, tender.status), (X.EXTRACTED, S.PENDING_VERIFICATION))
 
     def test_any_unexpected_exception_does_the_same(self):
         for exc in (RuntimeError("boom"), ValueError("bad"), KeyError("x"), TimeoutError()):

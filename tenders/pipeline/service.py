@@ -48,7 +48,7 @@ from ..models import (
 from . import fields as extraction_fields
 from . import sections
 from .converter import ConversionError, PyMuPDF4LLMConverter, check_text_layer
-from .extractor import ExtractionConfigError, build_request, forms_from_plan
+from .extractor import ExtractionConfigError, ExtractionUnavailable, build_request, forms_from_plan
 from .goods import parse_goods_schedule
 from .tables import split_pages
 from .toc import parse_toc
@@ -278,7 +278,7 @@ def _claim_reading(tender, stale_after):
 
 
 def _release(extraction):
-    """Hand a claim back (the extractor is not configured): the next run, after the fix, picks it up."""
+    """Hand a claim back (not configured, or the service briefly unavailable): the next run picks it up."""
     with transaction.atomic(), audit_actor(None):
         current = TenderExtraction.objects.select_for_update().get(pk=extraction.pk)
         if current.outcome == ExtractionOutcome.READING:
@@ -325,6 +325,9 @@ def extract_fields(tender, extractor, *, stale_after=None):
       PENDING_VERIFICATION. A failure leaves the fields empty; it never traps the tender.
     * Not configured (no API key or model) is different: that is an operations problem, not a bad
       tender, so the claim is released and ``ExtractionConfigError`` raised.
+    * The service being briefly unavailable (overloaded, rate-limited, timed out) is not a failure of
+      this tender either: the claim is released and the tender stays in EXTRACTING for the next run.
+      ``fail_stuck`` still finishes it with empty fields if the service stays down (R12).
     """
     extraction, claimed = _claim_reading(tender, stale_after)
     if not claimed:
@@ -335,6 +338,10 @@ def extract_fields(tender, extractor, *, stale_after=None):
     except ExtractionConfigError:
         _release(extraction)
         raise
+    except ExtractionUnavailable as exc:
+        logger.warning("Gemini unavailable for tender %s (%s); left for the next run", tender.reference, exc)
+        _release(extraction)
+        return extraction.__class__.objects.get(pk=extraction.pk)
     except Exception:  # an API error, bad JSON, anything: never trap a tender (R12)
         logger.exception("Extracting tender %s failed", tender.reference)
         return _record(tender, extraction, outcome=ExtractionOutcome.FAILED, message=MSG_EXTRACT_FAILED,

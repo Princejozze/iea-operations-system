@@ -29,6 +29,12 @@ class ExtractionConfigError(ExtractionError):
     """The extractor is not configured (no API key or model). An operations problem, not a bad tender."""
 
 
+class ExtractionUnavailable(ExtractionError):
+    """The model service could not answer just now: overloaded (503), rate-limited (429), another 5xx,
+    a timeout or a dropped connection. Nothing is wrong with the tender, so the service hands the claim
+    back and the next run asks again; the stuck-tender sweep still guarantees it is never trapped."""
+
+
 # --------------------------------------------------------------------------- #
 # what is sent
 # --------------------------------------------------------------------------- #
@@ -182,7 +188,8 @@ class GeminiExtractor(DocumentExtractor):
                 model=self.model, contents=request.prompt(), config=self._config(request))
         except Exception as exc:  # the SDK raises its own APIError family and httpx errors
             code = getattr(exc, "code", None)
-            raise ExtractionError(f"The Gemini request failed ({type(exc).__name__}{f' {code}' if code else ''}).") from exc
+            error = ExtractionUnavailable if _is_transient(exc, code) else ExtractionError
+            raise error(f"The Gemini request failed ({type(exc).__name__}{f' {code}' if code else ''}).") from exc
         text = getattr(response, "text", None)
         if not text:
             reason = getattr(getattr(response, "prompt_feedback", None), "block_reason", None)
@@ -194,6 +201,19 @@ class GeminiExtractor(DocumentExtractor):
         if not isinstance(parsed, dict):
             raise ExtractionError("Gemini's answer was not a JSON object.")
         return RawExtraction(fields=parsed, usage=_usage(response), raw_text=text, model=self.model)
+
+
+def _is_transient(exc, code):
+    """Worth asking again later: the service was busy or unreachable, not refusing this request."""
+    if code in RETRY_STATUS_CODES:
+        return True
+    if isinstance(exc, (TimeoutError, ConnectionError)):
+        return True
+    try:
+        import httpx
+    except ImportError:  # pragma: no cover - google-genai depends on httpx
+        return False
+    return isinstance(exc, (httpx.TimeoutException, httpx.NetworkError))
 
 
 def _usage(response):

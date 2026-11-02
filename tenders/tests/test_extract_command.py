@@ -10,11 +10,11 @@ from unittest import mock
 
 from django.core.files.base import ContentFile
 from django.core.management import CommandError, call_command
-from django.test import TestCase
+from django.test import TestCase, override_settings
 
 from tenders.models import ExtractionOutcome as X, Tender, TenderExtraction, TenderStatus as S
 from tenders.pipeline import service
-from tenders.pipeline.extractor import ExtractionConfigError
+from tenders.pipeline.extractor import ExtractionConfigError, ExtractionUnavailable
 
 from .helpers import TenderFixtures, backdate_updated_at, force_status
 from .pipeline_helpers import FakeExtractor, StaticConverter, good_answer, mini_tender_pages
@@ -210,3 +210,51 @@ class NeverTrapped(CommandCase):
             self.run_command(fake=fake)
         tender.refresh_from_db()
         self.assertEqual((tender.status, tender.extraction.outcome), (S.EXTRACTING, X.PREPARED))
+
+
+class GeminiBusy(CommandCase):
+    def test_an_unavailable_service_leaves_the_tender_extracting_and_says_so(self):
+        tender = self.upload()
+        with self.assertLogs("tenders.pipeline.service", level="WARNING"):
+            out, _, _ = self.run_command(fake=FakeExtractor(error=ExtractionUnavailable("503")))
+        self.assertIn("Gemini unavailable just now; left for the next run", out)
+        self.assertEqual(self.status(tender), S.EXTRACTING)
+        self.run_command()  # the next run, with the service back
+        self.assertEqual(self.status(tender), S.PENDING_VERIFICATION)
+
+
+SLEEP = "tenders.management.commands.extract_tenders.time.sleep"
+
+
+class DevelopmentLoop(CommandCase):
+    """--loop stands in for cron on a development machine (Windows has none)."""
+
+    @override_settings(DEBUG=False)
+    def test_the_loop_refuses_to_run_with_debug_off(self):
+        with self.assertRaisesMessage(CommandError, "development only"):
+            self.run_command("--loop")
+
+    @override_settings(DEBUG=True)
+    def test_the_loop_runs_once_per_interval_until_ctrl_c(self):
+        tender = self.upload()
+        with mock.patch(SLEEP, side_effect=[None, KeyboardInterrupt]) as sleep:
+            out, _, _ = self.run_command("--loop", "--interval", "60")
+        self.assertEqual(sleep.call_count, 2)  # two runs, then Ctrl+C during the second wait
+        self.assertLessEqual(sleep.call_args_list[0].args[0], 60)
+        self.assertEqual(self.status(tender), S.PENDING_VERIFICATION)
+        self.assertIn("Extraction poller stopped.", out)
+        self.assertEqual(out.count("tender(s) worked on"), 1)  # the idle second run stays quiet
+
+    @override_settings(DEBUG=True)
+    def test_a_failed_run_does_not_end_the_loop(self):
+        with mock.patch(SLEEP, side_effect=[None, KeyboardInterrupt]),                 mock.patch.object(service, "fail_stuck", side_effect=[RuntimeError("db hiccup"), []]),                 self.assertLogs("tenders.management.commands.extract_tenders", level="ERROR"):
+            _, err, _ = self.run_command("--loop")
+        self.assertIn("run failed", err)
+
+    @override_settings(DEBUG=True)
+    def test_missing_configuration_is_reported_every_run_and_the_loop_carries_on(self):
+        out, err = StringIO(), StringIO()
+        with mock.patch(FROM_ENV, side_effect=ExtractionConfigError("GEMINI_MODEL is not set.")),                 mock.patch(SLEEP, side_effect=[None, KeyboardInterrupt]):
+            call_command("extract_tenders", "--loop", stdout=out, stderr=err)
+        self.assertEqual(err.getvalue().count("GEMINI_MODEL is not set."), 2)
+        self.assertIn("restart this poller", err.getvalue())

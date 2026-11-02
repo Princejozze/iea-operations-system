@@ -18,6 +18,7 @@ from tenders.pipeline.extractor import (
     ExtractionConfigError,
     ExtractionError,
     ExtractionRequest,
+    ExtractionUnavailable,
     GeminiExtractor,
     RequestPart,
 )
@@ -172,6 +173,23 @@ class TheAnswer(SimpleTestCase):
                 self.extractor(exc=exc).extract(request())
             self.assertNotIn(SECRET, str(ctx.exception))
             self.assertIs(ctx.exception.__cause__, exc)  # the cause is kept for the log
+
+    def test_a_busy_or_unreachable_service_is_unavailable_not_a_failure(self):
+        def api_error(status):
+            return type("FakeApiError", (Exception,), {"code": status})(f"{status} from the API")
+
+        import httpx
+        for exc in (api_error(503), api_error(429), api_error(500), TimeoutError(), ConnectionError("reset"),
+                    httpx.ReadTimeout("slow"), httpx.ConnectError("refused")):
+            with self.subTest(exc=repr(exc)), self.assertRaises(ExtractionUnavailable):
+                self.extractor(exc=exc).extract(request())
+
+    def test_a_refused_request_is_a_plain_failure_not_worth_retrying(self):
+        for status in (400, 403, 404):
+            exc = type("FakeApiError", (Exception,), {"code": status})("no")
+            with self.subTest(status=status), self.assertRaises(ExtractionError) as ctx:
+                self.extractor(exc=exc).extract(request())
+            self.assertNotIsInstance(ctx.exception, ExtractionUnavailable)
 
     def test_it_is_a_document_extractor(self):
         self.assertIsInstance(self.extractor(response=response("{}")), DocumentExtractor)
