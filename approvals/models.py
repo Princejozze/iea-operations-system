@@ -452,11 +452,17 @@ class FundRequest(GuardedWrites, Auditable):
     status = models.CharField(
         max_length=16, choices=FundRequestStatus.choices, default=FundRequestStatus.PENDING, editable=False
     )
-    approved_by = models.ForeignKey(
+    # decided_*, not approved_*: these are set on a DECLINED request too, and "approved_by" on a
+    # declined row reads as a lie in the audit trail (§7). Same names as Approval and EligibilityReview.
+    decided_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, blank=True, related_name="+",
         editable=False, help_text="The MD who decided: set on APPROVED and also on DECLINED.",
     )
-    approved_at = models.DateTimeField(null=True, blank=True, editable=False)
+    decided_at = models.DateTimeField(null=True, blank=True, editable=False)
+    decision_reason = models.TextField(
+        blank=True, editable=False,
+        help_text="The MD's reason. Required when declining: the PM is told it.",
+    )
     paid_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, blank=True, related_name="+",
         editable=False,
@@ -467,7 +473,7 @@ class FundRequest(GuardedWrites, Auditable):
 
     objects = AuditableQuerySet.as_manager()
     GUARDED_FIELDS = (
-        "status", "approved_by", "approved_at", "paid_by", "paid_at", "payment_reference",
+        "status", "decided_by", "decided_at", "decision_reason", "paid_by", "paid_at", "payment_reference",
     )
 
     class Meta:
@@ -483,15 +489,19 @@ class FundRequest(GuardedWrites, Auditable):
             # The columns must tell the same story as the status.
             models.CheckConstraint(
                 condition=(
-                    Q(status=FundRequestStatus.PENDING, approved_by__isnull=True, approved_at__isnull=True,
-                      paid_by__isnull=True, paid_at__isnull=True, payment_reference="")
+                    Q(status=FundRequestStatus.PENDING, decided_by__isnull=True, decided_at__isnull=True,
+                      decision_reason="", paid_by__isnull=True, paid_at__isnull=True, payment_reference="")
                     | Q(status__in=[FundRequestStatus.APPROVED, FundRequestStatus.DECLINED],
-                        approved_by__isnull=False, approved_at__isnull=False,
+                        decided_by__isnull=False, decided_at__isnull=False,
                         paid_by__isnull=True, paid_at__isnull=True, payment_reference="")
-                    | (Q(status=FundRequestStatus.PAID, approved_by__isnull=False, approved_at__isnull=False,
+                    | (Q(status=FundRequestStatus.PAID, decided_by__isnull=False, decided_at__isnull=False,
                          paid_by__isnull=False, paid_at__isnull=False) & ~Q(payment_reference=""))
                 ),
                 name="approvals_fundrequest_status_consistent",
+            ),
+            models.CheckConstraint(
+                condition=~Q(status=FundRequestStatus.DECLINED) | ~Q(decision_reason=""),
+                name="approvals_fundrequest_decline_has_reason",
             ),
         ]
 
@@ -510,8 +520,10 @@ class FundRequest(GuardedWrites, Auditable):
             actual = _fresh_tender_status(self.tender)
             if actual not in FUND_REQUEST_TENDER_STATUSES:
                 errors["tender"] = f"A fund request cannot be raised while the tender is {actual}."
-        if self.approved_by_id is not None and self.approved_by.role != Role.EXECUTIVE:
-            errors["approved_by"] = "Only the Managing Director approves a fund request."
+        if self.decided_by_id is not None and self.decided_by.role != Role.EXECUTIVE:
+            errors["decided_by"] = "Only the Managing Director decides a fund request."
+        if self.status == FundRequestStatus.DECLINED and not self.decision_reason.strip():
+            errors["decision_reason"] = "A declined fund request must record its reason."
         if self.paid_by_id is not None and self.paid_by.role != Role.FINANCE:
             errors["paid_by"] = "Only Finance marks a fund request paid."
         return errors
@@ -564,26 +576,27 @@ class FundRequest(GuardedWrites, Auditable):
             recipients,
         )
 
-    def approve(self, user):
-        """EXEC: PENDING → APPROVED. Tells the PM, and Finance who must now pay."""
+    def approve(self, user, reason=""):
+        """EXEC: PENDING → APPROVED, optionally with a reason. Tells the PM, and Finance who must now pay."""
         with self._transition(
             user, event="approve", role=Role.EXECUTIVE, allowed_from=FundRequestStatus.PENDING
         ) as fr:
             fr.status = FundRequestStatus.APPROVED
-            fr.approved_by, fr.approved_at = user, timezone.now()
+            fr.decided_by, fr.decided_at = user, timezone.now()
+            fr.decision_reason = (reason or "").strip()
             fr._notify("approved", "approved by the Managing Director; Finance to pay.",
                        [fr.tender.project_manager.email, *_emails(Role.FINANCE)])
 
     def decline(self, user, reason):
-        """EXEC: PENDING → DECLINED, with a reason (appended to the notes)."""
+        """EXEC: PENDING → DECLINED, with a reason recorded in ``decision_reason``."""
         if not (reason or "").strip():
-            raise ValidationError({"notes": "A declined fund request must record its reason."})
+            raise ValidationError({"decision_reason": "A declined fund request must record its reason."})
         with self._transition(
             user, event="decline", role=Role.EXECUTIVE, allowed_from=FundRequestStatus.PENDING
         ) as fr:
             fr.status = FundRequestStatus.DECLINED
-            fr.approved_by, fr.approved_at = user, timezone.now()
-            fr.notes = f"{fr.notes}\nDeclined by the Managing Director: {reason.strip()}".strip()
+            fr.decided_by, fr.decided_at = user, timezone.now()
+            fr.decision_reason = reason.strip()
             fr._notify("declined", f"declined by the Managing Director. Reason: {reason.strip()}",
                        [fr.tender.project_manager.email])
 

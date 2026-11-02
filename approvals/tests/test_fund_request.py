@@ -9,13 +9,14 @@ from decimal import Decimal
 
 from django.core import mail
 from django.core.exceptions import PermissionDenied, ValidationError
+from django.db import IntegrityError, connection, transaction
 from django.test import TestCase
 
 from approvals.models import FundRequest, FundRequestPurpose as P, FundRequestStatus as FS
 from core.models import AuditBypassError, AuditEntry
 from tenders.models import Currency, GuardedFieldError, NEST_FUNDS_PURPOSE, TenderStatus as S, TransitionError
 
-from .helpers import TenderFixtures, fund_request, paid_fund_request, status_entries
+from .helpers import TenderFixtures, force_status, fund_request, paid_fund_request, status_entries
 
 
 class FundRequestLifecycleTests(TenderFixtures, TestCase):
@@ -57,8 +58,9 @@ class FundRequestLifecycleTests(TenderFixtures, TestCase):
         mail.outbox.clear()
         with self.captureOnCommitCallbacks(execute=True):
             fr.approve(self.md)
-        self.assertEqual((fr.status, fr.approved_by), (FS.APPROVED, self.md))
-        self.assertIsNotNone(fr.approved_at)
+        self.assertEqual((fr.status, fr.decided_by), (FS.APPROVED, self.md))
+        self.assertIsNotNone(fr.decided_at)
+        self.assertEqual(fr.decision_reason, "")
         self.assertCountEqual(mail.outbox[0].to, [self.pm.email, self.finance.email])
         fr.mark_paid(self.finance, "  TZ-2026-77  ")
         self.assertEqual((fr.status, fr.paid_by, fr.payment_reference), (FS.PAID, self.finance, "TZ-2026-77"))
@@ -97,7 +99,11 @@ class FundRequestLifecycleTests(TenderFixtures, TestCase):
         with self.captureOnCommitCallbacks(execute=True):
             fr.decline(self.md, "Not budgeted this month.")
         self.assertEqual(fr.status, FS.DECLINED)
-        self.assertIn("Not budgeted this month.", fr.notes)
+        self.assertEqual(fr.decision_reason, "Not budgeted this month.")
+        self.assertEqual(fr.decided_by, self.md)
+        self.assertIsNotNone(fr.decided_at)
+        self.assertNotIn("Not budgeted", fr.notes)  # the PM's notes are not overwritten
+        self.assertIn("Not budgeted this month.", mail.outbox[0].body)
         self.assertEqual([m.to for m in mail.outbox], [[self.pm.email]])
         with self.assertRaises(TransitionError):
             fr.mark_paid(self.finance, "REF")
@@ -208,3 +214,24 @@ class R17FundsGateTests(TenderFixtures, TestCase):
         self.assertFalse(AuditEntry.objects.filter(
             model="tenders.Tender", object_id=str(self.tender.pk), actor=self.finance
         ).exists())
+
+
+class FundRequestDecisionColumnTests(TenderFixtures, TestCase):
+    """§7: decided_* / decision_reason, and a decline always carries its reason, down to the database."""
+
+    def setUp(self):
+        self.tender = force_status(self.new_tender(), S.COSTING)
+
+    def test_approve_may_record_a_reason(self):
+        fr = fund_request(self.tender, self.pm)
+        fr.approve(self.md, "  Urgent: deadline Friday. ")
+        self.assertEqual(fr.decision_reason, "Urgent: deadline Friday.")
+
+    def test_database_refuses_a_decline_without_reason(self):
+        fr = fund_request(self.tender, self.pm)
+        with self.assertRaises(IntegrityError), transaction.atomic(), connection.cursor() as cur:
+            # Raw SQL: the model layer would refuse first; this proves the constraint itself.
+            cur.execute(
+                "UPDATE approvals_fundrequest SET status='DECLINED', decided_by_id=%s, decided_at=now(), "
+                "decision_reason='' WHERE id=%s", [self.md.pk, fr.pk],
+            )
