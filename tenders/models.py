@@ -853,15 +853,27 @@ class TenderDocument(Auditable):
 class ExtractionOutcome(models.TextChoices):
     PROCESSING = "PROCESSING", "Processing"  # claimed by a worker; converting
     PREPARED = "PREPARED", "Prepared"  # converted and sectioned; sections are ready to send
-    MANUAL_ENTRY = "MANUAL_ENTRY", "Manual entry"  # nothing readable: the PM types the tender (R12)
+    READING = "READING", "Reading"  # claimed by a worker; the model is being asked
+    EXTRACTED = "EXTRACTED", "Extracted"  # the model's answer passed the guard and the core fields are present
+    PARTIAL = "PARTIAL", "Partly extracted"  # something was read, but not every core field
+    FAILED = "FAILED", "Extraction failed"  # nothing usable: the PM types the tender (R12)
+    MANUAL_ENTRY = "MANUAL_ENTRY", "Manual entry"  # nothing readable to send: the PM types the tender (R12)
+
+
+# Where an extraction ends. Every one of these moves the tender on to PENDING_VERIFICATION (§5 step 6).
+FINISHED_OUTCOMES = (
+    ExtractionOutcome.EXTRACTED, ExtractionOutcome.PARTIAL, ExtractionOutcome.FAILED, ExtractionOutcome.MANUAL_ENTRY,
+)
 
 
 class TenderExtraction(Auditable):
     """
-    One row per tender. Today it records the pipeline up to the point a section is
-    ready to send (``plan``) or why the tender went to manual entry (``message``).
-    The model's raw output, per-field confidence and the PM's verification state arrive
-    with the extractor (§6): extracted values land HERE, never directly on Tender (R12).
+    One row per tender: what the pipeline worked out about its PDF, and what the model read from it.
+
+    ``plan`` records the sections located (§6). ``fields`` holds the extracted values, each with a
+    ``confidence`` and ``source_page`` so the PM can check it against the page; they land HERE and
+    NEVER directly on Tender (R12): the PM verifies and confirm_extraction copies them across.
+    ``fields`` is empty when the outcome is FAILED or MANUAL_ENTRY — the PM types everything.
     """
 
     tender = models.OneToOneField(Tender, on_delete=models.PROTECT, related_name="extraction")
@@ -869,8 +881,16 @@ class TenderExtraction(Auditable):
     message = models.TextField(blank=True, help_text="Shown to the PM, e.g. why the tender needs manual entry.")
     converter = models.CharField(max_length=100, blank=True)
     plan = models.JSONField(default=dict, blank=True, help_text="Sections located, fallbacks, raw-text pages. See tenders.pipeline.sections.")
+    fields = models.JSONField(
+        default=dict, blank=True,
+        help_text="{field: {value, confidence, source_page, quote, flags, low_confidence, source}}. Unverified: R12.",
+    )
+    raw_output = models.TextField(blank=True, help_text="The model's answer exactly as returned, for audit and debugging.")
+    usage = models.JSONField(default=dict, blank=True, help_text="Token counts for this document's model call (§6 budget).")
+    model_name = models.CharField(max_length=100, blank=True, help_text="The extractor and model that produced `fields`.")
+    extracted_at = models.DateTimeField(null=True, blank=True)
 
-    audit_redact = ("plan",)  # derived and bulky; the Markdown and the PDF are the record
+    audit_redact = ("plan", "raw_output")  # bulky, and recoverable from the PDF and the model call
 
     class Meta:
         constraints = [

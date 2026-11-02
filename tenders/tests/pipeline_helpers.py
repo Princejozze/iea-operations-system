@@ -179,11 +179,14 @@ def mini_tender_pages(goods_rows="|1|Laboratory centrifuge|No.|2|\n|2|Rotor, 24 
         2: "# **Table of contents**\n\n|SECTION I: INVITATION|3|\n|---|---|\n|QUALIFICATION AND EVALUATION CRITERIA|5|\n"
            "|SCHEDULE OF REQUIREMENTS|7|\n|Specifications|9|\n|TENDERING FORMS|10|\n",
         3: "## **SECTION I: INVITATION FOR QUOTATIONS**\n",
-        4: "MINI-COMPETITION QUOTATION\n\n## **Quotation No. TR9/2026/2027/G/1**\n\n"
-           "6. The mini competition quotation submission deadline will be on 2:00 PM at 23/10/2026.\n",
+        4: "MINI-COMPETITION QUOTATION\n\n## **THE UNITED REPUBLIC OF TANZANIA MINISTRY OF HEALTH**\n\n"
+           "## **Quotation No. TR9/2026/2027/G/1**\n\n## **FOR**\n\n## **Procurement of Laboratory Equipment**\n\n"
+           "6. The mini competition quotation submission deadline will be on 2:00 PM at 23/10/2026.\n\n"
+           "7. Tenderers may request clarification of the quotation documents before the submission deadline.\n",
         5: "## **SECTION III - QUALIFICATION AND EVALUATION CRITERIA**\n",
         6: "- **Commercial Evaluation**\n\n- **Tender Validity Period (SCORE: Comply/Not Comply to specified minimum requirements)**\n\n"
-           "- **Specific Experience (SCORE: Comply/Not Comply to specified minimum requirements)**\n",
+           "- **Specific Experience (SCORE: Comply/Not Comply to specified minimum requirements)**\n\n"
+           "Tenderer is required to provide details of their previous and on going contracts.\n",
         7: "# **SECTION V: SCHEDULE OF REQUIREMENTS**\n",
         8: "## **1. List of Goods and Related Services**\n\n## **LOT NO. TR9/2026/2027/G/1**\n\n## **Supply of Laboratory Equipment**\n\n"
            "## **GFS Code: 31122139 - Scientific Equipment**\n\n" + MINI_HEADER + goods_rows,
@@ -191,4 +194,131 @@ def mini_tender_pages(goods_rows="|1|Laboratory centrifuge|No.|2|\n|2|Rotor, 24 
         10: "## **SECTION VI: TENDERING FORMS**\n",
         11: "## **1. QUOTATION SUBMISSION FORM**\n\nWe agree to supply the goods.\n",
         12: "## **STANDARD POWER OF ATTORNEY**\n\nTO ALL IT MAY CONCERN\n",
+    }
+
+
+# --------------------------------------------------------------------------- #
+# extraction test doubles (no API call is ever made by the suite)
+# --------------------------------------------------------------------------- #
+
+from tenders.pipeline.extractor import DocumentExtractor, RawExtraction  # noqa: E402
+
+
+def field(value, page, quote, confidence=0.95):
+    return {"value": value, "confidence": confidence, "source_page": page, "quote": quote}
+
+
+def listing(*items, confidence=0.9):
+    return {"items": [{"text": t, "source_page": p, "quote": q} for t, p, q in items], "confidence": confidence}
+
+
+def good_answer():
+    """What a careful model would say about mini_tender_pages(): every value grounded in its quote."""
+    return {
+        "official_reference": field("TR9/2026/2027/G/1", 4, "Quotation No. TR9/2026/2027/G/1"),
+        "title": field("Procurement of Laboratory Equipment", 4, "Procurement of Laboratory Equipment"),
+        "client_name": field("MINISTRY OF HEALTH", 4, "THE UNITED REPUBLIC OF TANZANIA MINISTRY OF HEALTH"),
+        "client_address": field(None, None, None, None),
+        "submission_deadline": field("2026-10-23T14:00:00", 4,
+                                     "submission deadline will be on 2:00 PM at 23/10/2026"),
+        "clarification_deadline": field(None, None, None, None),
+        "bid_security_type": field(None, None, None, None),
+        "site_visit_required": field(None, None, None, None),
+        "site_visit_date": field(None, None, None, None),
+        "special_requirements": listing((
+            "Specific experience: details of previous and ongoing contracts", 6,
+            "Tenderer is required to provide details of their previous and on going contracts")),
+        "required_forms": listing(("Quotation Submission Form", 11, "1. QUOTATION SUBMISSION FORM"),
+                                  ("Standard Power of Attorney", 12, "STANDARD POWER OF ATTORNEY")),
+    }
+
+
+class FakeExtractor(DocumentExtractor):
+    """Returns what it was given (or raises what it was told to) and records every request."""
+
+    name = "fake:test-model"
+
+    def __init__(self, fields=None, *, error=None, usage=None, on_extract=None):
+        self.fields = good_answer() if fields is None else fields
+        self.error = error
+        self.usage = usage if usage is not None else {"prompt_tokens": 1000, "output_tokens": 200,
+                                                      "thoughts_tokens": 0, "cached_tokens": 0, "total_tokens": 1200}
+        self.on_extract = on_extract  # a hook that runs DURING the call, to simulate overlapping work
+        self.requests = []
+
+    @property
+    def calls(self):
+        return len(self.requests)
+
+    def extract(self, request):
+        self.requests.append(request)
+        if self.on_extract:
+            self.on_extract()
+        if self.error:
+            raise self.error
+        return RawExtraction(fields=self.fields, usage=self.usage, raw_text=json.dumps(self.fields), model="fake-model-1")
+
+
+# --------------------------------------------------------------------------- #
+# a fake extractor: the suite never spends an API call
+# --------------------------------------------------------------------------- #
+
+from tenders.pipeline.extractor import DocumentExtractor as _DocumentExtractor  # noqa: E402
+from tenders.pipeline.extractor import RawExtraction  # noqa: E402
+
+
+class FakeExtractor(_DocumentExtractor):
+    """Returns the answer it was given, or raises. Records every request it was asked."""
+
+    name = "fake:test-model"
+
+    def __init__(self, fields=None, *, error=None, usage=None, on_call=None):
+        self.fields = fields if fields is not None else {}
+        self.error = error
+        self.usage = usage if usage is not None else {"prompt_tokens": 1000, "output_tokens": 200,
+                                                      "thoughts_tokens": 0, "cached_tokens": 0, "total_tokens": 1200}
+        self.on_call = on_call
+        self.requests = []
+
+    @property
+    def calls(self):
+        return len(self.requests)
+
+    def extract(self, request):
+        self.requests.append(request)
+        if self.on_call:
+            self.on_call(request)
+        if self.error:
+            raise self.error
+        return RawExtraction(fields=self.fields, usage=self.usage, raw_text=json.dumps(self.fields), model="fake-model-1")
+
+
+def field(value, page, quote, confidence=0.95):
+    return {"value": value, "confidence": confidence, "source_page": page, "quote": quote}
+
+
+def listing(*items, confidence=0.9):
+    """items: (text, page, quote)"""
+    return {"items": [{"text": t, "source_page": p, "quote": q} for t, p, q in items], "confidence": confidence}
+
+
+def good_answer():
+    """What a careful model would say about mini_tender_pages(): every value stated, quoted and cited.
+    Clarification deadline and site visit are NOT stated in that tender, so they are null (§5)."""
+    return {
+        "official_reference": field("TR9/2026/2027/G/1", 4, "Quotation No. TR9/2026/2027/G/1"),
+        "title": field("Procurement of Laboratory Equipment", 4, "Procurement of Laboratory Equipment"),
+        "client_name": field("MINISTRY OF HEALTH", 4, "THE UNITED REPUBLIC OF TANZANIA MINISTRY OF HEALTH"),
+        "client_address": field(None, None, None, None),
+        "submission_deadline": field("2026-10-23T14:00:00", 4, "submission deadline will be on 2:00 PM at 23/10/2026"),
+        "clarification_deadline": field(None, None, None, None),
+        "bid_security_type": field(None, None, None, None),
+        "site_visit_required": field(None, None, None, None),
+        "site_visit_date": field(None, None, None, None),
+        "special_requirements": listing(
+            ("Details of previous and ongoing contracts as evidence of specific experience", 6,
+             "Tenderer is required to provide details of their previous and on going contracts")),
+        "required_forms": listing(
+            ("Quotation Submission Form", 11, "1. QUOTATION SUBMISSION FORM"),
+            ("Standard Power of Attorney", 12, "STANDARD POWER OF ATTORNEY")),
     }
