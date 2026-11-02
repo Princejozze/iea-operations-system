@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+{% block title %}Eligibility review — {{ tender.reference }} — IEA Operations{% endblock %}
+{% block content %}
+<div class="mb-3">
+  {% include "_crumbs.html" with tender=tender here="Eligibility review" %}
+  <h1 class="h4 mb-1">{{ tender.title|default:"Untitled tender" }}</h1>
+  <div class="small text-muted">
+    {% if tender.client %}{{ tender.client.name }} · {% endif %}{{ tender.get_status_display }}
+    {% if days_left is not None %} · {% include "_days.html" with days=days_left %}{% endif %}
+  </div>
+</div>
+
+<div class="row g-3">
+  <div class="col-lg-6">
+    <div class="card h-100"><div class="card-body">
+      <div class="small text-uppercase text-muted">Not met</div>
+      <p class="fw-semibold mb-2 elig-requirement">{{ review.requirement }}</p>
+      <div class="small text-muted mb-2">Raised by {{ review.raised_by.get_full_name|default:review.raised_by.email }}, {{ review.created_at|date:"j M Y, H:i" }}</div>
+      {% if review.pm_notes %}
+      <div class="small text-uppercase text-muted mt-3">The PM's notes</div>
+      <p class="mb-0 elig-notes">{{ review.pm_notes }}</p>
+      {% endif %}
+      {% if tender.special_requirements %}
+      <details class="mt-3 small">
+        <summary>All special requirements in this tender</summary>
+        <ul class="mt-2 mb-0">{% for line in tender.special_requirements.splitlines %}{% if line.strip %}<li>{{ line }}</li>{% endif %}{% endfor %}</ul>
+      </details>
+      {% endif %}
+    </div></div>
+  </div>
+
+  <div class="col-lg-6">
+    {% if can_decide %}
+    <div class="card needs-md-panel"><div class="card-body">
+      <h2 class="h6 needs-md">Your ruling</h2>
+      <p class="small text-muted mb-3">The tender is frozen until you rule.
+        Proceed, joint venture or remediate return it to {{ back_to|default:"where it was" }}; withdraw ends it.</p>
+      <form method="post" novalidate class="elig-form">
+        {% csrf_token %}
+        {% if form.non_field_errors %}<div class="alert alert-danger" role="alert">{% for e in form.non_field_errors %}<div>{{ e }}</div>{% endfor %}</div>{% endif %}
+        <fieldset class="mb-3">
+          <legend class="visually-hidden">{{ form.md_decision.label }}</legend>
+          <div class="verdict-choice elig-choice">
+            {% for choice in form.md_decision %}
+            <label>
+              <input type="radio" name="{{ choice.data.name }}" value="{{ choice.data.value }}"{% if choice.data.selected %} checked{% endif %}>
+              <span class="{% if choice.data.value == 'WITHDRAW' %}neg{% else %}pos{% endif %}">
+                {% if choice.data.value == "PROCEED" %}Proceed{% elif choice.data.value == "JOINT_VENTURE" %}Joint venture{% elif choice.data.value == "REMEDIATE" %}Remediate{% else %}Withdraw the tender{% endif %}
+              </span>
+            </label>
+            {% endfor %}
+          </div>
+          {% for e in form.md_decision.errors %}<div class="flag small mt-1">{{ e }}</div>{% endfor %}
+        </fieldset>
+
+        <div class="jv-only">
+          <div class="small text-muted mb-2">Joint venture only: the firm that holds the qualification IEA lacks.</div>
+          {% with f=form.jv_partner %}{% include "approvals/_field.html" %}{% endwith %}
+          {% with f=form.new_partner_name %}{% include "approvals/_field.html" %}{% endwith %}
+        </div>
+
+        {% with f=form.decision_notes %}{% include "approvals/_field.html" %}{% endwith %}
+
+        <div class="withdraw-only mb-3">
+          <div class="form-check">
+            {{ form.confirm_withdraw }}
+            <label class="form-check-label" for="{{ form.confirm_withdraw.id_for_label }}">{{ form.confirm_withdraw.label }}</label>
+          </div>
+          {% for e in form.confirm_withdraw.errors %}<div class="flag small">{{ e }}</div>{% endfor %}
+        </div>
+
+        <button type="submit" class="btn btn-needs-md w-100">Record ruling</button>
+      </form>
+    </div></div>
+
+    {% elif review.is_open %}
+    <div class="card {% if is_md %}needs-md-panel{% endif %}"><div class="card-body">
+      <div class="small text-uppercase {% if is_md %}needs-md{% else %}text-muted{% endif %}">Waiting for the MD</div>
+      <p class="mb-0">The tender is frozen (R9a): no item edits, pricing, RFQs or audit until the MD rules.{% if is_pm %} You will be emailed the ruling.{% endif %}</p>
+    </div></div>
+
+    {% else %}
+    <div class="card"><div class="card-body">
+      <div class="small text-uppercase text-muted">Ruling</div>
+      <p class="fw-semibold mb-1">{{ review.get_md_decision_display }}{% if review.jv_partner %} with {{ review.jv_partner.name }}{% endif %}</p>
+      <div class="small text-muted mb-2">{{ review.decided_by.get_full_name|default:review.decided_by.email }}, {{ review.decided_at|date:"j M Y, H:i" }}</div>
+      {% if review.decision_notes %}<p class="mb-0 elig-notes">{{ review.decision_notes }}</p>{% endif %}
+    </div></div>
+    {% endif %}
+  </div>
+</div>
+
+{% if history %}
+<div class="card mt-3"><div class="card-body">
+  <h2 class="h6">Earlier eligibility reviews on this tender</h2>
+  <ul class="list-unstyled small mb-0">
+    {% for h in history %}
+    <li class="py-1 {% if not forloop.first %}border-top{% endif %}"><a href="{% url 'approvals:eligibility_review' h.pk %}">{{ h.requirement|truncatechars:90 }}</a>
+      · {% if h.md_decision %}{{ h.get_md_decision_display }}{% if h.jv_partner %} with {{ h.jv_partner.name }}{% endif %}{% else %}open{% endif %}</li>
+    {% endfor %}
+  </ul>
+</div></div>
+{% endif %}
+{% endblock %}

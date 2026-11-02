@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}Eligibility decisions — IEA Operations{% endblock %}
+{% block content %}
+<h1 class="h4 needs-md">Eligibility decisions</h1>
+<p class="small text-muted">A PM has found a special requirement IEA does not meet. Each tender is frozen until you rule (R9a, R16).</p>
+{% if reviews %}
+<div class="list-group">
+  {% for r in reviews %}
+  <a class="list-group-item list-group-item-action needs-md-panel" href="{% url 'approvals:eligibility_review' r.pk %}">
+    <div class="d-flex justify-content-between gap-2">
+      <span class="ref">{{ r.tender.reference }}</span>
+      {% include "_days.html" with days=r.days_left %}
+    </div>
+    <div>{{ r.requirement|truncatechars:140 }}</div>
+    <div class="small text-muted">{{ r.tender.title|truncatechars:70 }} · raised by {{ r.raised_by.get_full_name|default:r.raised_by.email }}, {{ r.created_at|date:"j M" }}</div>
+  </a>
+  {% endfor %}
+</div>
+{% else %}
+<p class="text-muted">No unmet requirements are waiting for you.</p>
+{% endif %}
+{% endblock %}

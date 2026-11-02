@@ -70,7 +70,7 @@ move, never brass.
       {% if eligibility %}
       <ul class="dash-list compact">
         {% for r in eligibility %}
-        <li><a class="dash-row" href="{% url 'tenders:detail' r.tender_id %}">
+        <li><a class="dash-row" href="{% url 'approvals:eligibility_review' r.pk %}">
           <span class="dash-main"><span class="ref">{{ r.tender.reference }}</span>
             <span class="dash-title">{{ r.requirement|truncatechars:90 }}</span>
             <span class="dash-client">Raised by {{ r.raised_by.get_full_name }} · tender frozen (R9a)</span></span>

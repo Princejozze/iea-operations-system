@@ -197,6 +197,10 @@ def _detail_context(request, tender):
         "is_md": request.user.role == Role.EXECUTIVE,
         # R22: every reader may see the rates; before registration there is nothing to price.
         "show_rates_link": tender.status not in (S.EXTRACTING, S.PENDING_VERIFICATION),
+        # R16 via the reverse accessor — approvals sits below tenders (§1).
+        "eligibility_reviews": (list(tender.eligibility_reviews.select_related("jv_partner"))
+                                if hasattr(tender, "eligibility_reviews") else []),
+        "can_raise_eligibility": tender.project_manager_id == request.user.pk and tender.status in (S.DRAFTING, S.COSTING),
         # RelatedObjectDoesNotExist is an AttributeError, so getattr's default applies.
         "extraction": getattr(tender, "extraction", None),
         # Reverse accessors, never imports (§1): items, audits and approvals live below this app.

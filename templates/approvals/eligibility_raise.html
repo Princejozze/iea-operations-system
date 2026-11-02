@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}Raise eligibility review — {{ tender.reference }} — IEA Operations{% endblock %}
+{% block content %}
+<div class="mb-3">
+  {% include "_crumbs.html" with tender=tender here="Eligibility review" %}
+  <h1 class="h4 mb-1">An unmet special requirement</h1>
+  <div class="small text-muted">{{ tender.title }}{% if tender.client %} · {{ tender.client.name }}{% endif %}</div>
+</div>
+
+<div class="card mb-3" style="max-width: 46rem"><div class="card-body">
+  <p class="small mb-3">If IEA does not meet a special requirement, the MD decides what happens: proceed anyway, a joint venture,
+    remediate, or withdraw (R16). <strong>Sending this freezes the tender</strong> — no item edits, pricing or RFQs — until the MD rules (R9a).</p>
+
+  <form method="post" novalidate>
+    {% csrf_token %}
+    {% if form.non_field_errors %}<div class="alert alert-danger" role="alert">{% for e in form.non_field_errors %}<div>{{ e }}</div>{% endfor %}</div>{% endif %}
+
+    <fieldset class="mb-3">
+      <legend class="form-label small fw-semibold">{{ form.requirement_choice.label }}</legend>
+      <div class="req-choices">
+        {% for choice in form.requirement_choice %}
+        <label class="req-choice">
+          <input type="radio" name="{{ choice.data.name }}" value="{{ choice.data.value }}"{% if choice.data.selected %} checked{% endif %}>
+          <span>{{ choice.choice_label }}</span>
+        </label>
+        {% endfor %}
+      </div>
+      {% for e in form.requirement_choice.errors %}<div class="flag small mt-1">{{ e }}</div>{% endfor %}
+    </fieldset>
+
+    <div class="req-other">{% with f=form.requirement_other %}{% include "approvals/_field.html" %}{% endwith %}</div>
+    {% with f=form.pm_notes %}{% include "approvals/_field.html" %}{% endwith %}
+
+    <div class="d-flex flex-wrap gap-2">
+      <button type="submit" class="btn btn-ink">Send to the MD and freeze the tender</button>
+      <a class="btn btn-outline-ink" href="{% url 'tenders:detail' tender.pk %}">Cancel</a>
+    </div>
+  </form>
+</div></div>
+{% endblock %}

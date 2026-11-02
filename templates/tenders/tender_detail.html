@@ -31,6 +31,9 @@
       {% if tender.status == "PENDING_EXECUTIVE_APPROVAL" and is_md %}
         <a class="btn btn-needs-md" href="{% url 'approvals:submission_decide' tender.pk %}">Decide submission</a>
       {% endif %}
+      {% if tender.status == "PENDING_ELIGIBILITY_DECISION" %}{% for r in eligibility_reviews %}{% if not r.md_decision %}
+        <a class="btn {% if is_md %}btn-needs-md{% else %}btn-outline-ink{% endif %}" href="{% url 'approvals:eligibility_review' r.pk %}">{% if is_md %}Rule on the eligibility review{% else %}See the eligibility review{% endif %}</a>
+      {% endif %}{% endfor %}{% endif %}
       {% if tender.status == "PENDING_AUDIT" and user.role == "AUDIT" %}
         <a class="btn btn-ink" href="{% url 'audits:detail' tender.pk %}">Open the QC audit</a>
       {% endif %}
@@ -77,9 +80,22 @@
 <div class="d-flex flex-wrap gap-2 mb-3">
   {% if can_read_sheet and items_total and not gate_has_sheet_button %}<a class="btn btn-sm btn-outline-ink" href="{% url 'items:sheet' tender.pk %}">Item sheet <span class="num">({{ items_priced }}/{{ items_total }})</span></a>{% endif %}
   {% if can_read_audit and has_audit %}<a class="btn btn-sm btn-outline-ink" href="{% url 'audits:detail' tender.pk %}">QC audit</a>{% endif %}
+  {% if can_raise_eligibility %}<a class="btn btn-sm btn-outline-ink" href="{% url 'approvals:eligibility_raise' tender.pk %}">IEA does not meet a requirement…</a>{% endif %}
   {% if show_rates_link %}<a class="btn btn-sm btn-outline-ink" href="{% url 'tenders:rates' tender.pk %}">Pricing rates</a>{% endif %}
   {% if is_pm and can_request_funds %}<a class="btn btn-sm btn-outline-ink" href="{% url 'approvals:fund_new' tender.pk %}">Request funds</a>{% endif %}
 </div>
+
+{% if eligibility_reviews %}
+<div class="card mb-3">
+  <div class="card-body">
+    <h2 class="h6">Eligibility reviews</h2>
+    <ul class="list-unstyled small mb-0">
+      {% for r in eligibility_reviews %}<li class="py-1 {% if not forloop.first %}border-top{% endif %}"><a href="{% url 'approvals:eligibility_review' r.pk %}">{{ r.requirement|truncatechars:90 }}</a>
+        · {% if r.md_decision %}{{ r.get_md_decision_display }}{% if r.jv_partner %} with {{ r.jv_partner.name }}{% endif %}{% else %}<span class="{% if is_md %}needs-md{% endif %}">waiting for the MD</span>{% endif %}</li>{% endfor %}
+    </ul>
+  </div>
+</div>
+{% endif %}
 
 {% if fund_requests %}
 <div class="card mb-3">
