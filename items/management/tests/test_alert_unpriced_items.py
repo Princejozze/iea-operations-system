@@ -1,6 +1,9 @@
-"""alert_unpriced_items: the T-3 / T-2 / T-1 ladder (CLAUDE.md §10)."""
+"""alert_unpriced_items: the T-3 / T-2 / T-1 / T-0 ladder (CLAUDE.md §10)."""
 
+import datetime
 from decimal import Decimal
+
+from django.utils import timezone
 
 from accounts.models import Role
 from tenders.management.tests.alert_fixtures import AlertTestCase, add_item, ledger, local_noon, make_user, set_state
@@ -52,7 +55,7 @@ class UnpricedLadderTests(AlertTestCase):
         self.assertNotIn("former@imperialeastafrica.tz", msg.to)
 
     def test_outside_the_ladder_nothing_is_sent(self):
-        for days in (4, 10, 0, -1):
+        for days in (4, 10, -1):  # T-0 has its own tests below
             self.tender_due_in(days)
         self.assertEqual(self.run_command(CMD), [])
 
@@ -88,3 +91,61 @@ class UnpricedLadderTests(AlertTestCase):
         sent = self.run_command(CMD)
         self.assertEqual({m.to[0] for m in sent}, {self.pm.email, self.pm2.email})
         self.assertEqual(ledger("UNPRICED_T_MINUS_3").count(), 2)
+
+
+
+def _today_at(hour, minute=0, second=0):
+    return timezone.make_aware(datetime.datetime.combine(timezone.localdate(), datetime.time(hour, minute, second)))
+
+
+class DeadlineDayTests(AlertTestCase):
+    """T-0: the deadline day itself, while the deadline is still ahead."""
+
+    def test_t0_goes_to_the_management_team(self):
+        # 23:59:59 today: still ahead unless the suite runs in the day's last second.
+        tender = self.new_tender(S.COSTING, submission_deadline=_today_at(23, 59, 59))
+        add_item(tender)
+        [msg] = self.run_command(CMD)
+        self.assertEqual(sorted(msg.to), sorted([self.md.email, self.hops.email, self.pm.email]))
+        self.assertIn("deadline TODAY", msg.subject)
+        self.assertIn("TODAY at 23:59", msg.body)
+        self.assertEqual(ledger("UNPRICED_T_MINUS_0", tender).count(), 1)
+        self.assertEqual(self.run_command(CMD), [])  # once per day
+
+    def test_t0_after_the_deadline_has_passed_is_quiet(self):
+        tender = self.new_tender(S.COSTING, submission_deadline=_today_at(0, 0))
+        add_item(tender)
+        self.assertEqual(self.run_command(CMD), [])
+
+
+class ZeroItemTests(AlertTestCase):
+    """A tender with no items is as fatal as one with unpriced items (R2 refuses both)."""
+
+    def test_every_rung_covers_an_empty_tender(self):
+        audiences = {
+            3: [self.pm.email],
+            2: [self.pm.email, self.hops.email],
+            1: sorted([self.md.email, self.hops.email, self.pm.email]),
+        }
+        for days, expected in audiences.items():
+            tender = self.new_tender(S.DRAFTING, submission_deadline=local_noon(days))
+            [msg] = self.run_command(CMD)
+            self.assertEqual(sorted(msg.to) if days == 1 else msg.to, expected, days)
+            self.assertIn("no items", msg.subject)
+            self.assertIn("NO items", msg.body)
+            self.assertEqual(ledger(f"UNPRICED_T_MINUS_{days}", tender).count(), 1)
+            set_state(tender, S.WITHDRAWN)  # out of the way of the next rung
+
+    def test_empty_tender_on_the_deadline_day(self):
+        self.new_tender(S.DRAFTING, submission_deadline=_today_at(23, 59, 59))
+        [msg] = self.run_command(CMD)
+        self.assertIn("no items, deadline TODAY", msg.subject)
+
+    def test_empty_tender_outside_the_ladder_is_quiet(self):
+        self.new_tender(S.DRAFTING, submission_deadline=local_noon(5))
+        self.assertEqual(self.run_command(CMD), [])
+
+    def test_empty_tender_not_yet_registered_is_not_this_ladder(self):
+        """Before registration no item work is allowed (R15): not an unpriced-item problem."""
+        self.new_tender(S.PENDING_REGISTRATION_APPROVAL, submission_deadline=local_noon(1))
+        self.assertEqual(self.run_command(CMD), [])

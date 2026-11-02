@@ -2,13 +2,16 @@
 T-minus escalation ladder for unpriced items (CLAUDE.md §10 "Alerts").
 
 A tender whose submission deadline is close and which still has an item with
-no ``unit_cost`` is in danger of missing the bid: R2 will refuse the audit.
-The ladder widens the circle each day:
+no ``unit_cost`` — or has no items at all, which is just as fatal — is in
+danger of missing the bid: R2 will refuse the audit either way. The ladder
+widens the circle each day:
 
     T-3   the tender's PM
     T-2   the PM and the Head of Operations
     T-1   the whole management team — the Managing Director, the Head of
           Operations and the PM — warning that the bid is in jeopardy
+    T-0   the same team, on the deadline day itself, while the deadline has
+          not yet passed. After it has passed there is nothing left to save.
 
 "T-n" counts calendar days in Africa/Dar_es_Salaam: a deadline at 10:00 on
 Thursday is T-1 all day Wednesday. Each rung is a separate alert, sent at most
@@ -24,6 +27,7 @@ Cron, daily in the early morning (re-running later the same day is harmless):
 """
 
 from django.db.models import Count, Q
+from django.utils import timezone
 
 from accounts.models import Role, User
 from core.management.alerts import AlertCommand, clean_recipients, days_until, local_today, tender_header
@@ -33,7 +37,7 @@ S = TenderStatus
 
 OPEN_FOR_PRICING = (S.DRAFTING, S.COSTING, S.PENDING_ELIGIBILITY_DECISION)
 
-KIND = {3: "UNPRICED_T_MINUS_3", 2: "UNPRICED_T_MINUS_2", 1: "UNPRICED_T_MINUS_1"}
+KIND = {3: "UNPRICED_T_MINUS_3", 2: "UNPRICED_T_MINUS_2", 1: "UNPRICED_T_MINUS_1", 0: "UNPRICED_T_MINUS_0"}
 
 
 def _users(role):
@@ -41,7 +45,7 @@ def _users(role):
 
 
 class Command(AlertCommand):
-    help = "T-3 / T-2 / T-1 escalation for tenders with unpriced items. Run daily by cron."
+    help = "T-3 / T-2 / T-1 / T-0 escalation for tenders with unpriced items or no items. Run daily by cron."
 
     def handle_alerts(self, **options):
         today = local_today()
@@ -51,7 +55,7 @@ class Command(AlertCommand):
                 unpriced=Count("items", filter=Q(items__unit_cost__isnull=True)),
                 item_count=Count("items"),
             )
-            .filter(unpriced__gt=0)
+            .filter(Q(unpriced__gt=0) | Q(item_count=0))
             .select_related("project_manager", "client")
             .order_by("submission_deadline")
         )
@@ -60,10 +64,12 @@ class Command(AlertCommand):
             days = days_until(tender.submission_deadline, today)
             if days not in KIND:
                 continue
+            if days == 0 and tender.submission_deadline <= timezone.now():
+                continue  # deadline passed earlier today: nothing left to warn about
             if hops is None:
                 hops, execs = _users(Role.HEAD_OF_OPERATIONS), _users(Role.EXECUTIVE)
             pm = tender.project_manager
-            audience = {3: [pm], 2: [pm, *hops], 1: [*execs, *hops, pm]}[days]
+            audience = {3: [pm], 2: [pm, *hops], 1: [*execs, *hops, pm], 0: [*execs, *hops, pm]}[days]
             self.deliver(
                 kind=KIND[days], tender=tender, recipients=clean_recipients(audience),
                 subject=self._subject(tender, days), body=self._body(tender, days),
@@ -72,7 +78,9 @@ class Command(AlertCommand):
     @staticmethod
     def _subject(tender, days):
         n = tender.unpriced
-        what = f"{n} unpriced item{'s' if n != 1 else ''}"
+        what = "no items" if tender.item_count == 0 else f"{n} unpriced item{'s' if n != 1 else ''}"
+        if days == 0:
+            return f"BID IN JEOPARDY — {tender.reference}: {what}, deadline TODAY"
         if days == 1:
             return f"BID IN JEOPARDY — {tender.reference}: {what}, deadline tomorrow"
         return f"T-{days}: {tender.reference} has {what}"
@@ -81,14 +89,23 @@ class Command(AlertCommand):
     def _body(tender, days):
         n, total = tender.unpriced, tender.item_count
         lines = [tender_header(tender), ""]
-        lines.append(f"{n} of {total} item{'s' if total != 1 else ''} still {'has' if n == 1 else 'have'} no unit cost.")
+        if total == 0:
+            lines.append("The tender has NO items. An empty item sheet cannot be priced or audited (R2), "
+                         "so the bid cannot be submitted until its items are entered.")
+        else:
+            lines.append(f"{n} of {total} item{'s' if total != 1 else ''} still "
+                         f"{'has' if n == 1 else 'have'} no unit cost.")
         lines.append(f"Status: {tender.get_status_display()}. "
                      f"Project Manager: {tender.project_manager.get_full_name() or tender.project_manager.email}.")
         lines.append("")
         if tender.status == S.PENDING_ELIGIBILITY_DECISION:
             lines.append("The tender is frozen awaiting the Managing Director's eligibility decision (R9a): "
                          "no pricing can happen until it is resolved.")
-        if days == 1:
+        if days == 0:
+            deadline = timezone.localtime(tender.submission_deadline)
+            lines.append(f"The submission deadline is TODAY at {deadline:%H:%M}. The tender cannot go to QC audit "
+                         "until every item is priced (R2): the bid will be lost unless this is resolved now.")
+        elif days == 1:
             lines.append("The submission deadline is TOMORROW. The tender cannot go to QC audit while any item is "
                          "unpriced (R2), so an unpriced item now jeopardises the whole bid.")
         elif days == 2:
