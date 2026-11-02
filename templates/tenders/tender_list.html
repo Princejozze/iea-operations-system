@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}Tenders — IEA Operations{% endblock %}
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+  <h1 class="h4 mb-0">Tenders</h1>
+  {% if can_upload %}<a class="btn btn-ink" href="{% url 'tenders:upload' %}">Upload tender PDF</a>{% endif %}
+</div>
+
+<form method="get" action="{% url 'tenders:list' %}" class="mb-3" role="search">
+  <label for="q" class="visually-hidden">Search tenders</label>
+  <div class="input-group">
+    <input type="search" id="q" name="q" value="{{ q }}" class="form-control"
+           placeholder="Reference, tender number, client or title"
+           hx-get="{% url 'tenders:list' %}" hx-trigger="input changed delay:400ms, search"
+           hx-target="#tender-rows" hx-push-url="true" autocomplete="off">
+    <button class="btn btn-outline-ink" type="submit">Search</button>
+  </div>
+</form>
+
+<div id="tender-rows">{% include "tenders/_tender_rows.html" %}</div>
+{% endblock %}

@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{% block title %}{{ tender.reference }} — IEA Operations{% endblock %}
+{% block content %}
+<div class="mb-3">
+  <div class="mb-1">{% include "tenders/_reference.html" %}</div>
+  <h1 class="h4 mb-1">{{ tender.title|default:"(awaiting verification)" }}</h1>
+  <div class="small text-muted">
+    {% if tender.client %}{{ tender.client.name }}{% endif %}
+    {% if tender.official_reference %} · <span class="ref">{{ tender.official_reference }}</span>{% endif %}
+    {% if tender.legacy_reference %} · legacy <span class="ref">{{ tender.legacy_reference }}</span>{% endif %}
+  </div>
+</div>
+
+{% if tender.status == "EXTRACTING" %}{% include "tenders/_extracting.html" %}{% endif %}
+
+{# The blocking gate: what stops this tender, and whose move it is. Brass only when it is the MD's. #}
+{% if gate.text %}
+<div class="card mb-3 {% if gate.needs_md %}needs-md-panel{% endif %}">
+  <div class="card-body">
+    <div class="small text-uppercase {% if gate.needs_md %}needs-md{% else %}text-muted{% endif %}">
+      {% if gate.needs_md %}Needs the MD{% else %}Next: {{ gate.who }}{% endif %}
+    </div>
+    <div class="fw-semibold">{{ gate.text }}</div>
+    {% if gate.details %}
+    <ul class="small mb-0 mt-1">{% for d in gate.details %}<li>{{ d }}</li>{% endfor %}</ul>
+    {% endif %}
+    <div class="mt-2 d-flex flex-wrap gap-2">
+      {% if tender.status == "PENDING_VERIFICATION" and is_pm %}
+        <a class="btn btn-ink" href="{% url 'tenders:verify' tender.pk %}">Verify extracted fields</a>
+      {% endif %}
+      {% if tender.status == "PENDING_REGISTRATION_APPROVAL" and is_md %}
+        <a class="btn btn-needs-md" href="{% url 'approvals:registration_decide' tender.pk %}">Decide registration</a>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<div class="row g-2 mb-3 text-center">
+  <div class="col-4">
+    <div class="card h-100"><div class="card-body p-2">
+      <div class="small text-muted">Stage</div>
+      <div class="fw-semibold small {% if gate.needs_md %}needs-md{% endif %}">{{ tender.get_status_display }}</div>
+    </div></div>
+  </div>
+  <div class="col-4">
+    <div class="card h-100"><div class="card-body p-2">
+      <div class="small text-muted">Items priced</div>
+      <div class="fw-semibold num text-center">{{ items_priced }} / {{ items_total }}</div>
+    </div></div>
+  </div>
+  <div class="col-4">
+    <div class="card h-100"><div class="card-body p-2">
+      <div class="small text-muted">Days to deadline</div>
+      <div class="fw-semibold num text-center">
+        {% if days_left is None %}—{% elif closed %}{{ days_left }}{% elif days_left < 0 %}<span class="text-danger">passed</span>{% else %}{{ days_left }}{% endif %}
+      </div>
+    </div></div>
+  </div>
+</div>
+
+{% if not closed %}
+<ol class="stages mb-3" aria-label="Stages">
+  {% for s in stages %}
+  <li class="{% if s.current %}current{% elif s.done %}done{% endif %}"{% if s.current %} aria-current="step"{% endif %}>{{ s.label }}</li>
+  {% endfor %}
+</ol>
+{% endif %}
+
+<div class="card mb-3">
+  <div class="card-body">
+    <h2 class="h6">Tender details</h2>
+    <dl class="row small mb-0">
+      <dt class="col-5 col-md-3">Project manager</dt><dd class="col-7 col-md-9">{{ tender.project_manager.get_full_name|default:tender.project_manager.email }}</dd>
+      <dt class="col-5 col-md-3">Submission deadline</dt><dd class="col-7 col-md-9 num text-start">{{ tender.submission_deadline|date:"j M Y, H:i"|default:"—" }}</dd>
+      <dt class="col-5 col-md-3">Clarification deadline</dt><dd class="col-7 col-md-9 num text-start">{{ tender.clarification_deadline|date:"j M Y, H:i"|default:"—" }}</dd>
+      <dt class="col-5 col-md-3">Bid security</dt><dd class="col-7 col-md-9">{{ tender.get_bid_security_type_display|default:"—" }}</dd>
+      <dt class="col-5 col-md-3">Site visit</dt><dd class="col-7 col-md-9">{% if tender.site_visit_required is None %}—{% elif tender.site_visit_required %}Required{% if tender.site_visit_date %}, {{ tender.site_visit_date|date:"j M Y, H:i" }}{% endif %}{% else %}Not required{% endif %}</dd>
+      <dt class="col-5 col-md-3">Category</dt><dd class="col-7 col-md-9">{{ tender.category|default:"—" }}</dd>
+      <dt class="col-5 col-md-3">Client address</dt><dd class="col-7 col-md-9">{{ tender.client_address|linebreaksbr|default:"—" }}</dd>
+    </dl>
+    {% if tender.special_requirements %}
+    <h3 class="h6 mt-3">Special requirements</h3>
+    <ul class="small mb-0">{% for line in tender.special_requirements.splitlines %}<li>{{ line }}</li>{% endfor %}</ul>
+    {% endif %}
+    {% if tender.required_forms %}
+    <h3 class="h6 mt-3">Required forms</h3>
+    <ul class="small mb-0">{% for line in tender.required_forms.splitlines %}<li>{{ line }}</li>{% endfor %}</ul>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

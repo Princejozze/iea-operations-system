@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}Registration approvals — IEA Operations{% endblock %}
+{% block content %}
+<h1 class="h4 needs-md">Registration approvals</h1>
+<p class="small text-muted">Tenders a PM has uploaded and verified. No item, costing or RFQ work can begin until you decide (R15).</p>
+{% if tenders %}
+<div class="list-group">
+  {% for t in tenders %}
+  <a class="list-group-item list-group-item-action needs-md-panel" href="{% url 'approvals:registration_decide' t.pk %}">
+    <div class="d-flex justify-content-between gap-2">
+      <span class="ref">{{ t.reference }}</span>
+      <span class="small num text-muted">Due {{ t.submission_deadline|date:"j M Y"|default:"—" }}</span>
+    </div>
+    <div>{{ t.title|truncatechars:100 }}</div>
+    <div class="small text-muted">{{ t.client.name|default:"—" }} · PM {{ t.project_manager.get_full_name|default:t.project_manager.email }}</div>
+  </a>
+  {% endfor %}
+</div>
+{% else %}
+<p class="text-muted">Nothing is waiting for your decision.</p>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Upload tender — IEA Operations{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-12 col-md-8 col-lg-6">
+    <h1 class="h4">Upload a tender</h1>
+    <p class="text-muted small">
+      Upload the PDF exactly as published on NeST. The tender gets its reference immediately;
+      reading the document takes about one to two minutes, after which you verify every field.
+    </p>
+    <div class="card">
+      <div class="card-body">
+        <form method="post" enctype="multipart/form-data">
+          {% csrf_token %}
+          {% for error in form.non_field_errors %}<div class="alert alert-danger">{{ error }}</div>{% endfor %}
+          <div class="mb-3">
+            <label class="form-label" for="{{ form.pdf.id_for_label }}">{{ form.pdf.label }}</label>
+            <input type="file" name="pdf" id="{{ form.pdf.id_for_label }}" accept="application/pdf,.pdf"
+                   class="form-control{% if form.pdf.errors %} is-invalid{% endif %}" required>
+            {% for error in form.pdf.errors %}<div class="invalid-feedback">{{ error }}</div>{% endfor %}
+            <div class="form-text">{{ form.pdf.help_text }}</div>
+          </div>
+          <button class="btn btn-ink w-100" type="submit">Upload</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

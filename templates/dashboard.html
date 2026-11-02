@@ -1,33 +1,49 @@
 {% extends "base.html" %}
 {% block title %}Dashboard — IEA Operations{% endblock %}
 {% block content %}
-<h1 class="h3 mb-4">Welcome, {{ user.get_full_name|default:user.username }}</h1>
-<p class="text-muted">Role: {{ user.get_role_display }}</p>
+<h1 class="h4 mb-1">Welcome, {{ user.get_full_name|default:user.email }}</h1>
+<p class="text-muted mb-4">{{ user.get_role_display }}</p>
 
 <div class="row g-3">
+  {% if user.role != "CLEAR" %}
   <div class="col-12 col-md-4">
-    <div class="card h-100">
+    <a class="card h-100 text-decoration-none" href="{% url 'tenders:list' %}">
       <div class="card-body">
-        <h5 class="card-title">Tenders</h5>
-        <p class="card-text text-muted">Module 1–2 (Tender Mgmt + BOM) — in progress.</p>
+        <h2 class="h6 card-title">Tenders</h2>
+        <p class="card-text text-muted small mb-0">Search by reference, tender number, client or title.</p>
       </div>
-    </div>
+    </a>
   </div>
+  {% endif %}
+  {% if user.role == "PM" %}
   <div class="col-12 col-md-4">
-    <div class="card h-100">
+    <a class="card h-100 text-decoration-none" href="{% url 'tenders:upload' %}">
       <div class="card-body">
-        <h5 class="card-title">Pre-Bid QC Audit</h5>
-        <p class="card-text text-muted">Module 3 — not started yet.</p>
+        <h2 class="h6 card-title">Upload a tender</h2>
+        <p class="card-text text-muted small mb-0">Start from the PDF published on NeST.</p>
       </div>
-    </div>
+    </a>
   </div>
+  {% endif %}
+  {% if user.role == "EXEC" %}
   <div class="col-12 col-md-4">
-    <div class="card h-100">
+    <a class="card h-100 text-decoration-none needs-md-panel" href="{% url 'approvals:registration_queue' %}">
       <div class="card-body">
-        <h5 class="card-title">Admin</h5>
-        <p class="card-text text-muted"><a href="/admin/">Open Django Admin →</a></p>
+        <h2 class="h6 card-title needs-md">Registration approvals</h2>
+        <p class="card-text text-muted small mb-0">Tenders waiting for your decision to pursue.</p>
       </div>
-    </div>
+    </a>
   </div>
+  {% endif %}
+  {% if user.role == "ADMIN" %}
+  <div class="col-12 col-md-4">
+    <a class="card h-100 text-decoration-none" href="/admin/">
+      <div class="card-body">
+        <h2 class="h6 card-title">System administration</h2>
+        <p class="card-text text-muted small mb-0">Users and configuration.</p>
+      </div>
+    </a>
+  </div>
+  {% endif %}
 </div>
 {% endblock %}

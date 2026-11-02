@@ -1,0 +1,11 @@
+<div class="card mb-3" hx-get="{% url 'tenders:status' tender.pk %}" hx-trigger="every {{ poll_seconds }}s" hx-swap="outerHTML">
+  <div class="card-body">
+    <div class="d-flex align-items-center gap-2">
+      <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+      <strong>Reading the tender PDF…</strong>
+    </div>
+    <p class="small text-muted mb-0 mt-1">
+      This usually takes one to two minutes. This page updates itself; you can also leave and come back.
+    </p>
+  </div>
+</div>

@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}Registration — {{ tender.reference }} — IEA Operations{% endblock %}
+{% block content %}
+<div class="mb-3">
+  <div class="mb-1">{% include "tenders/_reference.html" %}</div>
+  <h1 class="h4 mb-1">{{ tender.title }}</h1>
+  <div class="small text-muted">{{ tender.client.name }} · <span class="ref">{{ tender.official_reference }}</span></div>
+</div>
+
+<div class="card mb-3">
+  <div class="card-body">
+    <dl class="row small mb-0">
+      <dt class="col-5 col-md-3">Project manager</dt><dd class="col-7 col-md-9">{{ tender.project_manager.get_full_name|default:tender.project_manager.email }}</dd>
+      <dt class="col-5 col-md-3">Submission deadline</dt><dd class="col-7 col-md-9 num text-start">{{ tender.submission_deadline|date:"j M Y, H:i" }}</dd>
+      <dt class="col-5 col-md-3">Bid security</dt><dd class="col-7 col-md-9">{{ tender.get_bid_security_type_display }}</dd>
+      <dt class="col-5 col-md-3">Site visit</dt><dd class="col-7 col-md-9">{% if tender.site_visit_required %}Required{% else %}Not required{% endif %}</dd>
+      <dt class="col-5 col-md-3">Category</dt><dd class="col-7 col-md-9">{{ tender.category|default:"—" }}</dd>
+    </dl>
+    {% if tender.special_requirements %}
+    <h2 class="h6 mt-3">Special requirements</h2>
+    <ul class="small mb-0">{% for line in tender.special_requirements.splitlines %}<li>{{ line }}</li>{% endfor %}</ul>
+    {% endif %}
+    <a class="small d-inline-block mt-2" href="{% url 'tenders:detail' tender.pk %}">Full tender details</a>
+  </div>
+</div>
+
+<div class="card needs-md-panel">
+  <div class="card-body">
+    <h2 class="h6 needs-md">Your decision</h2>
+    <form method="post" novalidate>
+      {% csrf_token %}
+      {% if form.non_field_errors %}
+      <div class="alert alert-danger">{% for e in form.non_field_errors %}<div>{{ e }}</div>{% endfor %}</div>
+      {% endif %}
+      <fieldset class="mb-3">
+        <legend class="form-label small fw-semibold">Register this tender?</legend>
+        {% for choice in form.decision %}
+        <div class="form-check">
+          <input class="form-check-input" type="radio" name="{{ choice.data.name }}" value="{{ choice.data.value }}"
+                 id="{{ choice.id_for_label }}"{% if choice.data.selected %} checked{% endif %}>
+          <label class="form-check-label" for="{{ choice.id_for_label }}">
+            {% if choice.data.value == "APPROVED" %}Approve — work may begin{% else %}Decline — the tender is withdrawn{% endif %}
+          </label>
+        </div>
+        {% endfor %}
+        {% for e in form.decision.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}
+      </fieldset>
+      {% with f=form.comments %}{% include "approvals/_field.html" %}{% endwith %}
+      {% with f=form.typed_name %}{% include "approvals/_field.html" %}{% endwith %}
+      {% with f=form.password %}{% include "approvals/_field.html" %}{% endwith %}
+      <button type="submit" class="btn btn-needs-md w-100">Sign decision</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

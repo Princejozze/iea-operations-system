@@ -1,0 +1,45 @@
+{% if page.object_list %}
+<div class="table-responsive">
+<table class="table table-sm align-middle table-tenders bg-white border">
+  <thead>
+    <tr>
+      <th scope="col">Tender</th>
+      <th scope="col" class="d-none d-lg-table-cell">Client</th>
+      <th scope="col">Stage</th>
+      <th scope="col" class="num d-none d-sm-table-cell">Priced</th>
+      <th scope="col" class="num">Days</th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for t in page %}
+    <tr>
+      <td>
+        <a class="ref" href="{% url 'tenders:detail' t.pk %}">{{ t.reference }}</a>
+        {% if t.legacy_reference %}<span class="ref text-muted small ms-1">{{ t.legacy_reference }}</span>{% endif %}
+        <div class="small">{{ t.title|default:"(awaiting verification)"|truncatechars:90 }}</div>
+        <div class="small text-muted">
+          {% if t.official_reference %}<span class="ref">{{ t.official_reference }}</span>{% endif %}
+          <span class="d-lg-none">{% if t.client %} · {{ t.client.short_name|default:t.client.name }}{% endif %}</span>
+        </div>
+      </td>
+      <td class="d-none d-lg-table-cell small">{{ t.client.name|default:"—" }}</td>
+      <td>
+        <span class="badge {% if t.needs_md %}needs-md-badge{% else %}badge-status{% endif %}">{{ t.get_status_display }}</span>
+      </td>
+      <td class="num d-none d-sm-table-cell">{{ t.items_priced }}/{{ t.items_total }}</td>
+      <td class="num">{% if t.days_left is None %}—{% else %}{{ t.days_left }}{% endif %}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% if page.has_other_pages %}
+<nav aria-label="Pages" class="d-flex justify-content-between align-items-center">
+  {% if page.has_previous %}<a class="btn btn-sm btn-outline-ink" href="?q={{ q|urlencode }}&page={{ page.previous_page_number }}">Previous</a>{% else %}<span></span>{% endif %}
+  <span class="small text-muted num">Page {{ page.number }} of {{ page.paginator.num_pages }}</span>
+  {% if page.has_next %}<a class="btn btn-sm btn-outline-ink" href="?q={{ q|urlencode }}&page={{ page.next_page_number }}">Next</a>{% else %}<span></span>{% endif %}
+</nav>
+{% endif %}
+{% else %}
+<p class="text-muted">{% if q %}No tender matches “{{ q }}”.{% else %}No tenders yet.{% endif %}</p>
+{% endif %}

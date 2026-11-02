@@ -6,37 +6,55 @@
   <title>{% block title %}IEA Operations{% endblock %}</title>
   {% load static %}
 
-  <!-- Self-hosted, not CDN-linked: one less external dependency on a
+  <!-- Self-hosted, never CDN-linked: one less external dependency on a
        slow link, and no dependency on a CDN being reachable at all. -->
   <link rel="stylesheet" href="{% static 'vendor/bootstrap/css/bootstrap.min.css' %}">
   <link rel="stylesheet" href="{% static 'css/custom.css' %}">
 </head>
-<body>
-  <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+<body hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'>
+  <nav class="navbar navbar-expand-md navbar-dark navbar-iea">
     <div class="container-fluid">
-      <a class="navbar-brand" href="/">IEA Operations</a>
-      {% if user.is_authenticated %}
-      <div class="d-flex text-light align-items-center">
-        <span class="me-3">{{ user.get_full_name|default:user.username }} — {{ user.get_role_display }}</span>
-        <form method="post" action="{% url 'logout' %}">
-          {% csrf_token %}
-          <button class="btn btn-sm btn-outline-light" type="submit">Log out</button>
-        </form>
+      <a class="navbar-brand" href="{% url 'dashboard' %}">IEA Operations</a>
+      {% if user.is_authenticated and not user.must_change_password %}
+      <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#mainnav"
+              aria-controls="mainnav" aria-expanded="false" aria-label="Menu">
+        <span class="navbar-toggler-icon"></span>
+      </button>
+      <div class="collapse navbar-collapse" id="mainnav">
+        <ul class="navbar-nav me-auto">
+          {% if user.role != "CLEAR" %}
+          <li class="nav-item"><a class="nav-link" href="{% url 'tenders:list' %}">Tenders</a></li>
+          {% endif %}
+          {% if user.role == "PM" %}
+          <li class="nav-item"><a class="nav-link" href="{% url 'tenders:upload' %}">Upload tender</a></li>
+          {% endif %}
+          {% if user.role == "EXEC" %}
+          <li class="nav-item"><a class="nav-link" href="{% url 'approvals:registration_queue' %}">Registration approvals</a></li>
+          {% endif %}
+        </ul>
+        <div class="d-flex align-items-center gap-2 py-2 py-md-0">
+          <span class="navbar-text small">{{ user.get_full_name|default:user.email }} · {{ user.get_role_display }}</span>
+          <form method="post" action="{% url 'logout' %}">
+            {% csrf_token %}
+            <button class="btn btn-sm btn-outline-light" type="submit">Log out</button>
+          </form>
+        </div>
       </div>
       {% endif %}
     </div>
   </nav>
 
-  <main class="container my-4">
+  <main class="container my-3 my-md-4">
     {% if messages %}
       {% for message in messages %}
-        <div class="alert alert-{{ message.tags }}">{{ message }}</div>
+        <div class="alert alert-{% if message.tags == 'error' %}danger{% else %}{{ message.tags }}{% endif %}">{{ message }}</div>
       {% endfor %}
     {% endif %}
     {% block content %}{% endblock %}
   </main>
 
-  <script src="{% static 'vendor/bootstrap/js/bootstrap.bundle.min.js' %}"></script>
-  <script src="{% static 'vendor/htmx/htmx.min.js' %}"></script>
+  <script src="{% static 'vendor/bootstrap/js/bootstrap.bundle.min.js' %}" defer></script>
+  <script src="{% static 'vendor/htmx/htmx.min.js' %}" defer></script>
+  <script src="{% static 'js/app.js' %}" defer></script>
 </body>
 </html>

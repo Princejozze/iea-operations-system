@@ -1,3 +1,74 @@
-/* Project-specific overrides go here, on top of Bootstrap.
-   Keep this file small — every rule you add here is one you have to
-   remember exists. Prefer Bootstrap utility classes in templates first. */
+/* Project-specific overrides on top of Bootstrap.
+   Keep this file small. Prefer Bootstrap utility classes in templates first.
+
+   Design tokens (approved mockups). BRASS IS RESERVED EXCLUSIVELY FOR
+   "this needs the MD" — use it only through the .needs-md* classes below,
+   never for decoration, links or ordinary buttons. */
+:root {
+  --iea-ink: #0E2A33;
+  --iea-paper: #F6F5F1;
+  --iea-card: #FFFFFF;
+  --iea-rule: #DEDAD2;
+  --iea-muted: #5A6B72;
+  --iea-brass: #8A6508;
+
+  --bs-body-bg: var(--iea-paper);
+  --bs-body-color: var(--iea-ink);
+  --bs-border-color: var(--iea-rule);
+  --bs-secondary-color: var(--iea-muted);
+  --bs-link-color: var(--iea-ink);
+  --bs-link-color-rgb: 14, 42, 51;
+  --bs-link-hover-color: var(--iea-ink);
+  --bs-card-bg: var(--iea-card);
+}
+
+body { background: var(--iea-paper); color: var(--iea-ink); }
+.text-muted, .form-text { color: var(--iea-muted) !important; }
+
+.navbar-iea { background: var(--iea-ink); }
+.navbar-iea .nav-link, .navbar-iea .navbar-brand, .navbar-iea .navbar-text { color: #fff; }
+.navbar-iea .nav-link:hover { color: var(--iea-rule); }
+
+.card { background: var(--iea-card); border-color: var(--iea-rule); }
+.table { --bs-table-bg: var(--iea-card); --bs-table-border-color: var(--iea-rule); }
+hr, .border, .border-top, .border-bottom { border-color: var(--iea-rule) !important; }
+
+.btn-ink { background: var(--iea-ink); border-color: var(--iea-ink); color: #fff; }
+.btn-ink:hover, .btn-ink:focus { background: #173f4b; border-color: #173f4b; color: #fff; }
+.btn-outline-ink { border-color: var(--iea-ink); color: var(--iea-ink); }
+.btn-outline-ink:hover { background: var(--iea-ink); color: #fff; }
+
+/* Tender references: monospace, select-all on tap (R18). */
+.ref {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  user-select: all;
+  white-space: nowrap;
+}
+/* Tabular numerals wherever numbers sit in columns. */
+.num, .table td.num, .table th.num { font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+
+/* "This needs the MD." The only place brass is used. */
+.needs-md { color: var(--iea-brass) !important; }
+.badge.needs-md, .needs-md-badge { background: var(--iea-brass) !important; color: #fff !important; }
+.needs-md-panel { border-left: 4px solid var(--iea-brass) !important; }
+.btn-needs-md { background: var(--iea-brass); border-color: var(--iea-brass); color: #fff; }
+.btn-needs-md:hover, .btn-needs-md:focus { background: #6f5106; border-color: #6f5106; color: #fff; }
+
+.badge-status { background: var(--iea-paper); color: var(--iea-ink); border: 1px solid var(--iea-rule); font-weight: 500; }
+
+/* Stage strip on the tender detail page. */
+.stages { list-style: none; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: .25rem; }
+.stages li { font-size: .75rem; padding: .15rem .45rem; border: 1px solid var(--iea-rule); border-radius: .25rem; color: var(--iea-muted); background: var(--iea-card); }
+.stages li.done { color: var(--iea-ink); }
+.stages li.current { background: var(--iea-ink); border-color: var(--iea-ink); color: #fff; }
+
+/* Verification: evidence beside each field. */
+.evidence { font-size: .8rem; color: var(--iea-muted); }
+.evidence blockquote { margin: .25rem 0 0; padding-left: .5rem; border-left: 2px solid var(--iea-rule); font-style: italic; }
+.low-confidence { color: #9a2a1f; font-weight: 600; }
+
+/* Phones: let the search box and buttons take the full width. */
+@media (max-width: 575.98px) {
+  main.container { padding-left: .75rem; padding-right: .75rem; }
+  .table-tenders td, .table-tenders th { padding: .4rem .35rem; }
+}

@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block title %}Verify {{ tender.reference }} — IEA Operations{% endblock %}
+{% block content %}
+<div class="mb-3">
+  <div class="mb-1">{% include "tenders/_reference.html" %}</div>
+  <h1 class="h4 mb-1">Verify the extracted fields</h1>
+  <p class="small text-muted mb-0">
+    These values were read from the PDF by the system and are a draft (R12). Check each one against its source page,
+    correct anything wrong, and fill in what is missing. Nothing reaches the tender until you confirm.
+  </p>
+</div>
+
+{% if extraction %}
+  {% if extraction.outcome == "FAILED" or extraction.outcome == "MANUAL_ENTRY" %}
+  <div class="alert alert-warning">
+    <strong>{{ extraction.get_outcome_display }}.</strong>
+    {{ extraction.message|default:"Nothing could be read from this PDF. Please type the tender details." }}
+  </div>
+  {% elif extraction.message %}
+  <div class="alert alert-info small">{{ extraction.message }}</div>
+  {% endif %}
+{% else %}
+  <div class="alert alert-warning">No extraction is recorded for this tender. Please type the tender details.</div>
+{% endif %}
+
+<form method="post" novalidate>
+  {% csrf_token %}
+  {% if form.non_field_errors %}
+  <div class="alert alert-danger">{% for e in form.non_field_errors %}<div>{{ e }}</div>{% endfor %}</div>
+  {% endif %}
+
+  {% for row in rows %}
+  {% with f=row.field r=row.record %}
+  <div class="card mb-2">
+    <div class="card-body py-2">
+      <div class="row g-2">
+        <div class="col-12 col-md-7">
+          <label class="form-label small fw-semibold mb-1" for="{{ f.id_for_label }}">
+            {{ f.label }}{% if row.required %} <span class="text-danger" title="Required">*</span>{% endif %}
+          </label>
+          {{ f }}
+          {% if f.help_text %}<div class="form-text">{{ f.help_text }}</div>{% endif %}
+          {% for e in f.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}
+        </div>
+        <div class="col-12 col-md-5 evidence">
+          {% if r %}
+            {% if not row.found %}
+              <div>Not found in the document.</div>
+            {% else %}
+              <div>
+                {% if r.low_confidence %}<span class="low-confidence">Low confidence — check carefully</span> · {% endif %}
+                {% if r.confidence is not None %}<span class="num">Confidence {% widthratio r.confidence 1 100 %}%</span>{% endif %}
+                {% if r.source_page %} · <span class="num">page {{ r.source_page }}</span>{% endif %}
+                {% if r.source == "toc" %} · from the table of contents{% endif %}
+              </div>
+              {% if r.quote %}<blockquote>“{{ r.quote }}”</blockquote>{% endif %}
+              {% if row.date_only %}<div>No time was stated — the time shown is 00:00; correct it if needed.</div>{% endif %}
+              {% if row.is_list %}
+              <ul class="mb-0 ps-3">
+                {% for item in r.value %}<li>{{ item.text }}{% if item.source_page %} <span class="num">(p. {{ item.source_page }})</span>{% endif %}</li>{% endfor %}
+              </ul>
+              {% endif %}
+            {% endif %}
+            {% if r.flags %}<div class="mt-1">Checks: {{ r.flags|join:", " }}</div>{% endif %}
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+  {% endwith %}
+  {% endfor %}
+
+  <div class="d-flex flex-wrap gap-2 mt-3 mb-2">
+    <button type="submit" class="btn btn-ink">Confirm and send to the MD</button>
+    <a class="btn btn-outline-ink" href="{% url 'tenders:detail' tender.pk %}">Cancel</a>
+  </div>
+  <p class="small text-muted">Fields marked * are required before the tender can go to the MD for registration approval.</p>
+</form>
+{% endblock %}
